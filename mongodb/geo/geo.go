@@ -1,4 +1,4 @@
-package geojson
+package geo
 
 import "fmt"
 
@@ -65,6 +65,26 @@ func NewLineString(c []Coordinate) *LineString {
 	}
 }
 
+type LintStringC = []Coordinate
+
+type MultiLineString struct {
+	Type string        `bson:"type"`
+	C    []LintStringC `bson:"coordinates"`
+}
+
+func NewMultiLineString(l LineString, ls ...LineString) *MultiLineString {
+	ret := &MultiLineString{
+		Type: "MultiLineString",
+		C:    []LintStringC{l.C},
+	}
+	for _, l := range ls {
+		ret.C = append(ret.C, l.C)
+	}
+
+	return ret
+}
+
+//Ring the first and last coordinates in the array must be the same
 type Ring = []Coordinate
 
 type Polygon struct {
@@ -114,31 +134,31 @@ func (m *MultiPolygon) Polygons() []Polygon {
 	return ret
 }
 
-type GeoCollection struct {
-	Type string        `bson:"type"`
-	C    []interface{} `bson:"geometries"`
+type Collection struct {
+	Type string `bson:"type"`
+	C    []any  `bson:"geometries"`
 }
 
-func NewGeoCollection() *GeoCollection {
-	return &GeoCollection{Type: "GeometryCollection"}
+func NewGeoCollection() *Collection {
+	return &Collection{Type: "GeometryCollection"}
 }
 
-func (g *GeoCollection) AddPoint(p SpherePoint) {
+func (g *Collection) AddPoint(p SpherePoint) {
 	g.C = append(g.C, p)
 }
 
-func (g *GeoCollection) AddMultiPoint(p MultiSpherePoint) {
+func (g *Collection) AddMultiPoint(p MultiSpherePoint) {
 	g.C = append(g.C, p)
 }
 
-func (g *GeoCollection) AddLineString(p LineString) {
+func (g *Collection) AddLineString(p LineString) {
 	g.C = append(g.C, p)
 }
 
-func (g *GeoCollection) AddPolygon(p Polygon) {
+func (g *Collection) AddPolygon(p Polygon) {
 	g.C = append(g.C, p)
 }
 
-func (g *GeoCollection) AddMultiPolygon(p MultiPolygon) {
+func (g *Collection) AddMultiPolygon(p MultiPolygon) {
 	g.C = append(g.C, p)
 }
