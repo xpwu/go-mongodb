@@ -7,6 +7,7 @@ import (
 
 type Key interface {
 	ToBsonD() bson.D
+	Options() bson.D
 }
 
 type base struct {
@@ -18,6 +19,11 @@ func (b *base) ToBsonD() bson.D {
 	return bson.D{{b.f.FullName(), b.value}}
 }
 
+func (b *base) Options() bson.D {
+	// todo
+	return bson.D{}
+}
+
 type KeyType = interface{}
 
 const (
@@ -25,7 +31,7 @@ const (
 	KeyTypeAscendingOrder  = 1
 	KeyTypeText            = "text"
 	KeyType2d              = "2d"
-	KeyType2dsphere        = "2dsphere"
+	KeyType2dSphere        = "2dsphere"
 )
 
 // keyType 常用： 1 升序；-1 降序；"2dsphere"; "2d"; "text"。具体可以查阅mongodb文档
@@ -52,6 +58,11 @@ func (c *compound) ToBsonD() bson.D {
 	}
 
 	return ret
+}
+
+func (c *compound) Options() bson.D {
+	// todo
+	return bson.D{}
 }
 
 func Keys(k1 Key, keys ...Key) Key {
