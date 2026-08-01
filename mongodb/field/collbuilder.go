@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"github.com/xpwu/go-db-mongo/mongodb"
 	"github.com/xpwu/go-db-mongo/mongodb/filter"
+	"github.com/xpwu/go-db-mongo/mongodb/geo"
 	"github.com/xpwu/go-db-mongo/mongodb/updater"
 	"github.com/xpwu/go-db-mongo/mongodb/x"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -151,6 +152,9 @@ func NewCollBuilder(opts ...BuilderOption) *CollBuilder {
 	b.RegisterType(typeFieldInfo[bson.Binary]("BinaryField", "NewBinaryField", true))
 	b.RegisterType(typeFieldInfo[bson.Decimal128]("Decimal128Field", "NewDecimal128Field", true))
 	b.RegisterType(typeFieldInfo[bson.ObjectID]("ObjectIDField", "NewObjectIDField", true))
+
+	b.RegisterType(NewTypeInfo[geo.SpherePoint](NewSpherePointField))
+	b.RegisterType(NewTypeInfo[geo.FlatPoint](NewFlatPointField))
 
 	b.RegisterKind(reflect.Struct, b.buildStruct)
 	b.RegisterKind(reflect.Slice, b.buildSlice)
