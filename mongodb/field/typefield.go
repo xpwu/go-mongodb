@@ -123,12 +123,8 @@ func NewComparableField[T ~bool | bson.ObjectID](name string) ComparableField[T]
 }
 
 type BoolField = ComparableField[bool]
-type ObjectIDField = ComparableField[bson.ObjectID]
 
-var (
-	NewBoolField     = NewComparableField[bool]
-	NewObjectIDField = NewComparableField[bson.ObjectID]
-)
+var NewBoolField = NewComparableField[bool]
 
 type ComputableField[T ~float32 | ~float64] interface {
 	mongodb.Field
@@ -148,28 +144,6 @@ var (
 	NewFloat32Field = NewComputableField[float32]
 	NewFloat64Field = NewComputableField[float64]
 )
-
-type Decimal128Field interface {
-	mongodb.Field
-	filter.ComparableFilter[bson.Decimal128]
-	updater.ComputableUpdater[bson.Decimal128, bson.Decimal128]
-	index.BaseKey
-}
-
-func NewDecimal128Field(name string) Decimal128Field {
-	return &BaseField[bson.Decimal128]{name}
-}
-
-type BinaryField interface {
-	mongodb.Field
-	filter.ComparableFilter[bson.Binary]
-	updater.BaseUpdater[bson.Binary]
-	index.BaseKey
-}
-
-func NewBinaryField(name string) BinaryField {
-	return &BaseField[bson.Binary]{name}
-}
 
 func SubField(selfName, fieldName string) string {
 	if selfName == "" {
