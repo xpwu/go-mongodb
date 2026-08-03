@@ -18,7 +18,7 @@ type Wx struct {
 
 type UserInfo struct {
 	ID    string `bson:"_id"`
-	Login int    `bson:"login"`
+	Login int    `bson:"Login"`
 	Pass  []int
 	Wx    *Wx
 	Wx3   Wx
