@@ -47,6 +47,22 @@ func (b *BaseField[T]) LtField(f filter.BaseFilterField[T]) filter.Filter {
 	return filter.CompareByValue(b, filter.LT, f)
 }
 
+func (b *BaseField[T]) Gte(value T) filter.Filter {
+	return filter.CompareByValue(b, filter.GTE, value)
+}
+
+func (b *BaseField[T]) GteField(f filter.BaseFilterField[T]) filter.Filter {
+	return filter.CompareByValue(b, filter.GTE, f)
+}
+
+func (b *BaseField[T]) Lte(value T) filter.Filter {
+	return filter.CompareByValue(b, filter.LTE, value)
+}
+
+func (b *BaseField[T]) LteField(f filter.BaseFilterField[T]) filter.Filter {
+	return filter.CompareByValue(b, filter.LTE, f)
+}
+
 var (
 	_ filter.BaseFilterField[any] = &BaseField[any]{}
 )
@@ -109,22 +125,6 @@ func (b *BaseField[T]) Ne(value T) filter.Filter {
 
 func (b *BaseField[T]) NeField(f filter.ComparableFilterField[T]) filter.Filter {
 	return filter.CompareByField(b, filter.NE, f)
-}
-
-func (b *BaseField[T]) Gte(value T) filter.Filter {
-	return filter.CompareByValue(b, filter.GTE, value)
-}
-
-func (b *BaseField[T]) GteField(f filter.ComparableFilterField[T]) filter.Filter {
-	return filter.CompareByValue(b, filter.GTE, f)
-}
-
-func (b *BaseField[T]) Lte(value T) filter.Filter {
-	return filter.CompareByValue(b, filter.LTE, value)
-}
-
-func (b *BaseField[T]) LteField(f filter.ComparableFilterField[T]) filter.Filter {
-	return filter.CompareByValue(b, filter.LTE, f)
 }
 
 func (b *BaseField[T]) In(values []T) filter.Filter {

@@ -18,4 +18,8 @@ type BaseFilter[T any] interface {
 	GtField(f BaseFilterField[T]) Filter
 	Lt(value T) Filter
 	LtField(f BaseFilterField[T]) Filter
+	Gte(value T) Filter
+	GteField(f BaseFilterField[T]) Filter
+	Lte(value T) Filter
+	LteField(f BaseFilterField[T]) Filter
 }

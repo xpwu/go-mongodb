@@ -23,10 +23,7 @@ type ComparableFilter[T any] interface {
 	// https://www.mongodb.com/docs/manual/reference/operator/query/ne/
 	Ne(value T) Filter
 	NeField(f ComparableFilterField[T]) Filter
-	Gte(value T) Filter
-	GteField(f ComparableFilterField[T]) Filter
-	Lte(value T) Filter
-	LteField(f ComparableFilterField[T]) Filter
+
 	In(values []T) Filter
 
 	// Nin selects documents where:
