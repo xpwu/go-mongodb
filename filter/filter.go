@@ -2,7 +2,7 @@ package filter
 
 import (
 	"fmt"
-	"github.com/xpwu/go-db-mongo/mongodb"
+	"github.com/xpwu/go-mongodb/field"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"reflect"
 )
@@ -28,7 +28,7 @@ func (c Comparer) String() string {
 }
 
 type base struct {
-	f        mongodb.Field
+	f        field.Field
 	operator string
 	value    interface{}
 }
@@ -50,7 +50,7 @@ func (b *base) ToBsonD() *bson.D {
 	return &bson.D{{name, bson.D{{b.operator, b.value}}}}
 }
 
-func New(f mongodb.Field, operator string, value interface{}) Filter {
+func New(f field.Field, operator string, value interface{}) Filter {
 	return &base{
 		f:        f,
 		operator: operator,
@@ -58,7 +58,7 @@ func New(f mongodb.Field, operator string, value interface{}) Filter {
 	}
 }
 
-func Exist(f mongodb.Field) Filter {
+func Exist(f field.Field) Filter {
 	return &base{
 		f:        f,
 		operator: `$exists`,
@@ -66,7 +66,7 @@ func Exist(f mongodb.Field) Filter {
 	}
 }
 
-func NotExist(f mongodb.Field) Filter {
+func NotExist(f field.Field) Filter {
 	return &base{
 		f:        f,
 		operator: `$exists`,
@@ -74,7 +74,7 @@ func NotExist(f mongodb.Field) Filter {
 	}
 }
 
-func Type(f mongodb.Field, t bson.Type) Filter {
+func Type(f field.Field, t bson.Type) Filter {
 	return &base{
 		f:        f,
 		operator: `$type`,
@@ -82,7 +82,7 @@ func Type(f mongodb.Field, t bson.Type) Filter {
 	}
 }
 
-func CompareByValue(f mongodb.Field, c Comparer, value interface{}) Filter {
+func CompareByValue(f field.Field, c Comparer, value interface{}) Filter {
 	return &base{
 		f:        f,
 		operator: c.String(),
@@ -91,9 +91,9 @@ func CompareByValue(f mongodb.Field, c Comparer, value interface{}) Filter {
 }
 
 type exprFilter struct {
-	f1       mongodb.Field
+	f1       field.Field
 	operator string
-	f2       mongodb.Field
+	f2       field.Field
 }
 
 func (e *exprFilter) ToBsonD() *bson.D {
@@ -103,7 +103,7 @@ func (e *exprFilter) ToBsonD() *bson.D {
 
 // CompareByField compare fields from the same document.
 // https://www.mongodb.com/docs/manual/reference/operator/query/expr/#compare-two-fields-from-a-single-document
-func CompareByField(f1 mongodb.Field, c Comparer, f2 mongodb.Field) Filter {
+func CompareByField(f1 field.Field, c Comparer, f2 field.Field) Filter {
 	return &exprFilter{
 		f1:       f1,
 		operator: c.String(),
@@ -111,7 +111,7 @@ func CompareByField(f1 mongodb.Field, c Comparer, f2 mongodb.Field) Filter {
 	}
 }
 
-func SameElemMatch(f mongodb.Field, filter Filter) Filter {
+func SameElemMatch(f field.Field, filter Filter) Filter {
 	return &base{
 		f:        f,
 		operator: `$elemMatch`,
@@ -145,7 +145,7 @@ func Or(filter1, filter2 Filter, filters ...Filter) Filter {
 // including those documents that do not contain these field(s).
 //
 // NOTE THAT: The exception in returning documents that do not contain the field in the $nor expression
-//is when the $nor operator is used with the $exists operator.
+// is when the $nor operator is used with the $exists operator.
 // https://www.mongodb.com/docs/manual/reference/operator/query/nor/#-nor-and--exists
 func Nor(filter1, filter2 Filter, filters ...Filter) Filter {
 	return newNor(filter1, filter2, filters...)

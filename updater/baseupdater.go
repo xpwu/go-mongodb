@@ -1,9 +1,11 @@
 package updater
 
-import "github.com/xpwu/go-db-mongo/mongodb"
+import (
+	"github.com/xpwu/go-mongodb/field"
+)
 
 type BaseUpdaterField[T any] interface {
-	mongodb.Field
+	field.Field
 	BaseUpdater[T]
 }
 

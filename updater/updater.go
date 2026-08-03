@@ -1,8 +1,8 @@
 package updater
 
 import (
-	"github.com/xpwu/go-db-mongo/mongodb"
-	"github.com/xpwu/go-db-mongo/mongodb/filter"
+	"github.com/xpwu/go-mongodb/field"
+	"github.com/xpwu/go-mongodb/filter"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -11,7 +11,7 @@ type Updater interface {
 }
 
 type base struct {
-	f     mongodb.Field
+	f     field.Field
 	op    string
 	value interface{}
 }
@@ -21,7 +21,7 @@ func (b *base) ToBsonM() bson.M {
 	return bson.M{b.op: bson.M{b.f.FullName(): b.value}}
 }
 
-func New(f mongodb.Field, op string, value interface{}) Updater {
+func New(f field.Field, op string, value interface{}) Updater {
 	return &base{
 		f:     f,
 		op:    op,
@@ -71,7 +71,7 @@ func Batch(u1 Updater, updaters ...Updater) Updater {
 	return &batch{updaters: append([]Updater{u1}, updaters...)}
 }
 
-func PullByFilter(f mongodb.Field, filter filter.Filter) Updater {
+func PullByFilter(f field.Field, filter filter.Filter) Updater {
 	return &base{
 		f:     f,
 		op:    `$pull`,
@@ -79,7 +79,7 @@ func PullByFilter(f mongodb.Field, filter filter.Filter) Updater {
 	}
 }
 
-func PushByModifier(f mongodb.Field, modifier PushModifier, each interface{}) Updater {
+func PushByModifier(f field.Field, modifier PushModifier, each interface{}) Updater {
 	val := modifier.toBsonM()
 	val[`$each`] = each
 

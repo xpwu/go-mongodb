@@ -1,7 +1,7 @@
 package updater
 
 import (
-	"github.com/xpwu/go-db-mongo/mongodb"
+	"github.com/xpwu/go-mongodb/field"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -12,7 +12,7 @@ type Computable interface {
 }
 
 type ComputableUpdaterField[T Computable, VT Computable] interface {
-	mongodb.Field
+	field.Field
 	ComputableUpdater[T, VT]
 }
 

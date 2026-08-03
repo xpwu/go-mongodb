@@ -1,4 +1,4 @@
-module github.com/xpwu/go-db-mongo
+module github.com/xpwu/go-mongodb
 
 go 1.19
 

@@ -1,11 +1,11 @@
 package client
 
 import (
-	"github.com/xpwu/go-db-mongo/mongodb/filter"
-	"github.com/xpwu/go-db-mongo/mongodb/index"
-	"github.com/xpwu/go-db-mongo/mongodb/updater"
-	"github.com/xpwu/go-db-mongo/mongodb/x"
-	"github.com/xpwu/go-db-mongo/mongodb/xopt"
+	"github.com/xpwu/go-mongodb/filter"
+	"github.com/xpwu/go-mongodb/index"
+	"github.com/xpwu/go-mongodb/updater"
+	"github.com/xpwu/go-mongodb/x"
+	"github.com/xpwu/go-mongodb/xopt"
 	"github.com/xpwu/go-x/exe"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"

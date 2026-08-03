@@ -1,9 +1,9 @@
 package newfield
 
 import (
-	"github.com/xpwu/go-db-mongo/mongodb/field/elsejson"
-	"github.com/xpwu/go-db-mongo/mongodb/field/newfield/base"
-	"github.com/xpwu/go-db-mongo/mongodb/geo"
+	"github.com/xpwu/go-mongodb/demo/elsejson"
+	"github.com/xpwu/go-mongodb/demo/newfield/base"
+	"github.com/xpwu/go-mongodb/geo"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 

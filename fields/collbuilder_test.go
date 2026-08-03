@@ -1,4 +1,4 @@
-package field
+package fields
 
 import (
 	"github.com/stretchr/testify/assert"

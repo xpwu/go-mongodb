@@ -1,9 +1,11 @@
 package filter
 
-import "github.com/xpwu/go-db-mongo/mongodb"
+import (
+	"github.com/xpwu/go-mongodb/field"
+)
 
 type ComparableFilterField[T any] interface {
-	mongodb.Field
+	field.Field
 	ComparableFilter[T]
 }
 
@@ -12,7 +14,7 @@ type ComparableFilter[T any] interface {
 	BaseFilter[T]
 	Eq(value T) Filter
 	EqField(f ComparableFilterField[T]) Filter
-	
+
 	// Ne selects documents
 	//
 	// 1. where the value of the field is not equal to the specified value.

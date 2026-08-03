@@ -1,7 +1,7 @@
 package index
 
 import (
-	"github.com/xpwu/go-db-mongo/mongodb"
+	"github.com/xpwu/go-mongodb/field"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -11,7 +11,7 @@ type Key interface {
 }
 
 type base struct {
-	f     mongodb.Field
+	f     field.Field
 	value interface{}
 }
 
@@ -35,7 +35,7 @@ const (
 )
 
 // keyType 常用： 1 升序；-1 降序；"2dsphere"; "2d"; "text"。具体可以查阅mongodb文档
-func NewKey(f mongodb.Field, keyType KeyType) Key {
+func NewKey(f field.Field, keyType KeyType) Key {
 	return &base{
 		f:     f,
 		value: keyType,

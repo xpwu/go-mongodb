@@ -1,4 +1,4 @@
-package field
+package fields
 
 import (
 	"bytes"
@@ -6,11 +6,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
-	"github.com/xpwu/go-db-mongo/mongodb"
-	"github.com/xpwu/go-db-mongo/mongodb/filter"
-	"github.com/xpwu/go-db-mongo/mongodb/geo"
-	"github.com/xpwu/go-db-mongo/mongodb/updater"
-	"github.com/xpwu/go-db-mongo/mongodb/x"
+	"github.com/xpwu/go-mongodb/field"
+	"github.com/xpwu/go-mongodb/filter"
+	"github.com/xpwu/go-mongodb/geo"
+	"github.com/xpwu/go-mongodb/updater"
+	"github.com/xpwu/go-mongodb/x"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"os"
 	"path"
@@ -47,7 +47,7 @@ type TypeInfo struct {
 	EqualAble bool
 }
 
-func NewTypeInfo[T any, FieldType mongodb.Field](creator func(name string) FieldType) TypeInfo {
+func NewTypeInfo[T any, FieldType field.Field](creator func(name string) FieldType) TypeInfo {
 	name := runtime.FuncForPC(reflect.ValueOf(creator).Pointer()).Name()
 	f := strings.FieldsFunc(name, func(r rune) bool {
 		if r == '.' {
@@ -280,7 +280,7 @@ func (b *CollBuilder) buildSlice(t reflect.Type) (ft TypeInfo, ok bool) {
 	thisImports := b.structCtx.imports
 
 	// Array 的代码都在同一 package 下
-	arrPkg := thisImports.add(x.TypeFor[ArrayField[any, mongodb.Field]]().PkgPath())
+	arrPkg := thisImports.add(x.TypeFor[ArrayField[any, field.Field]]().PkgPath())
 
 	arrField := ""
 	if !eft.EqualAble {
@@ -568,7 +568,7 @@ func (b *CollBuilder) buildStruct(t reflect.Type) (ft TypeInfo, ok bool) {
 		Name:         thisName,
 		FilterAlias:  addDot(thisImports.add(x.TypeFor[filter.ComparableFilter[any]]().PkgPath())),
 		FieldAlias:   addDot(thisImports.add(x.TypeFor[BaseField[any]]().PkgPath())),
-		MongoAlias:   addDot(thisImports.add(x.TypeFor[mongodb.Field]().PkgPath())),
+		MongoAlias:   addDot(thisImports.add(x.TypeFor[field.Field]().PkgPath())),
 		UpdaterAlias: addDot(thisImports.add(x.TypeFor[updater.BaseUpdater[any]]().PkgPath())),
 		Inlines:      make([]Inline, 0),
 	}

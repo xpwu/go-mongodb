@@ -1,7 +1,7 @@
 package updater
 
 import (
-	"github.com/xpwu/go-db-mongo/mongodb"
+	"github.com/xpwu/go-mongodb/field"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -16,7 +16,7 @@ func Asc() Option {
 	}
 }
 
-func AscWith(f mongodb.Field) Option {
+func AscWith(f field.Field) Option {
 	return func(p *PushModifier) {
 		if p.sort != nil {
 			panic("PushModifier sort has set")
@@ -34,7 +34,7 @@ func Desc() Option {
 	}
 }
 
-func DescWith(f mongodb.Field) Option {
+func DescWith(f field.Field) Option {
 	return func(p *PushModifier) {
 		if p.sort != nil {
 			panic("PushModifier sort has set")
@@ -44,7 +44,7 @@ func DescWith(f mongodb.Field) Option {
 }
 
 // Position A negative number corresponds to the position in the array, counting from (but not including) the last element
-//of the array. For example, -1 indicates the position just before the last element in the array.
+// of the array. For example, -1 indicates the position just before the last element in the array.
 //
 // https://www.mongodb.com/docs/manual/reference/operator/update/position/#mongodb-update-up.-position
 func Position(pos int) Option {
@@ -54,9 +54,10 @@ func Position(pos int) Option {
 }
 
 // Slice Limits the number of array elements during a Push operation.
-//   n == 0 To update the array <field> to an empty array.
-//   n < 0  To update the array <field> to contain only the last <num> elements.
-//   n > 0  To update the array <field> contain only the first <num> elements.
+//
+//	n == 0 To update the array <field> to an empty array.
+//	n < 0  To update the array <field> to contain only the last <num> elements.
+//	n > 0  To update the array <field> contain only the first <num> elements.
 //
 // https://www.mongodb.com/docs/manual/reference/operator/update/slice/#mongodb-update-up.-slice
 func Slice(n int) Option {
