@@ -72,7 +72,7 @@ type structContext struct {
 	imports *allImports
 }
 
-type CollBuilder struct {
+type StructFieldBuilder struct {
 	typeMap   map[reflect.Type]TypeInfo
 	kindMap   map[reflect.Kind]func(reflect.Type) (TypeInfo, bool)
 	dir       string
@@ -119,7 +119,7 @@ func IgnoreTagErr() BuilderOption {
 //	}
 //}
 
-func NewCollBuilder(opts ...BuilderOption) *CollBuilder {
+func NewStructFieldBuilder(opts ...BuilderOption) *StructFieldBuilder {
 	op := &builderOption{
 		useJSONStructTags: false,
 		lowerField:        false,
@@ -129,7 +129,7 @@ func NewCollBuilder(opts ...BuilderOption) *CollBuilder {
 		f(op)
 	}
 
-	b := &CollBuilder{
+	b := &StructFieldBuilder{
 		typeMap: make(map[reflect.Type]TypeInfo),
 		kindMap: make(map[reflect.Kind]func(reflect.Type) (TypeInfo, bool)),
 		opt:     op,
@@ -164,26 +164,26 @@ func NewCollBuilder(opts ...BuilderOption) *CollBuilder {
 	return b
 }
 
-func (b *CollBuilder) ClearType(rt reflect.Type) *CollBuilder {
+func (b *StructFieldBuilder) ClearType(rt reflect.Type) *StructFieldBuilder {
 	delete(b.typeMap, rt)
 	return b
 }
 
-func (b *CollBuilder) RegisterType(info TypeInfo) *CollBuilder {
+func (b *StructFieldBuilder) RegisterType(info TypeInfo) *StructFieldBuilder {
 	b.typeMap[info.T] = info
 	return b
 }
 
-func (b *CollBuilder) RegisterKind(k reflect.Kind, f func(rt reflect.Type) (TypeInfo, bool)) *CollBuilder {
+func (b *StructFieldBuilder) RegisterKind(k reflect.Kind, f func(rt reflect.Type) (TypeInfo, bool)) *StructFieldBuilder {
 	b.kindMap[k] = f
 	return b
 }
 
-func (b *CollBuilder) buildPtr(t reflect.Type) (ft TypeInfo, ok bool) {
+func (b *StructFieldBuilder) buildPtr(t reflect.Type) (ft TypeInfo, ok bool) {
 	return b.build(t.Elem())
 }
 
-func (b *CollBuilder) build(rt reflect.Type) (ft TypeInfo, ok bool) {
+func (b *StructFieldBuilder) build(rt reflect.Type) (ft TypeInfo, ok bool) {
 	ft, ok = b.typeMap[rt]
 	if ok {
 		return
@@ -216,7 +216,7 @@ func getRuntimeInfo() (pkg, dir string) {
 	return
 }
 
-func BuildColl[T any](builder *CollBuilder) {
+func BuildColl[T any](builder *StructFieldBuilder) {
 	if builder.opt.dir == "" || builder.opt.targetPkg == "" {
 		builder.targetPkg, builder.dir = getRuntimeInfo()
 	} else {
@@ -227,7 +227,7 @@ func BuildColl[T any](builder *CollBuilder) {
 	builder.Build(x.TypeFor[T]())
 }
 
-func (b *CollBuilder) Build(rt reflect.Type) {
+func (b *StructFieldBuilder) Build(rt reflect.Type) {
 	if rt.Kind() == reflect.Ptr {
 		rt = rt.Elem()
 	}
@@ -264,7 +264,7 @@ func indentLines(s string, indents int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (b *CollBuilder) buildSlice(t reflect.Type) (ft TypeInfo, ok bool) {
+func (b *StructFieldBuilder) buildSlice(t reflect.Type) (ft TypeInfo, ok bool) {
 	elem := t.Elem()
 	dim := 1
 	for elem.Kind() == reflect.Slice || elem.Kind() == reflect.Array {
@@ -510,7 +510,7 @@ func (m *allImports) all() []importTemp {
 	return ret
 }
 
-func (b *CollBuilder) buildStruct(t reflect.Type) (ft TypeInfo, ok bool) {
+func (b *StructFieldBuilder) buildStruct(t reflect.Type) (ft TypeInfo, ok bool) {
 	type Field struct {
 		MethodName string
 		FieldName  string
