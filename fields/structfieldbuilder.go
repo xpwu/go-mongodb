@@ -529,7 +529,7 @@ func (b *StructFieldBuilder) buildStruct(t reflect.Type) (ft TypeInfo, ok bool) 
 	thisName := x.BaseTypeName(t)
 
 	if b.targetPkg != t.PkgPath() {
-		subDir := x.SanitizePackageName(x.LastSubPath(t.PkgPath()) + base6408(t.PkgPath()))
+		subDir := x.SanitizePackageName(x.LastSubPath(t.PkgPath()) + "_" + base6408(t.PkgPath()))
 		if strings.HasPrefix(t.PkgPath(), b.targetPkg+"/") {
 			subDir = strings.TrimPrefix(t.PkgPath(), b.targetPkg+"/")
 		}

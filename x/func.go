@@ -52,3 +52,14 @@ func SanitizePackageName(path string) string {
 
 	return result
 }
+
+func CapitalizeASCII(s string) string {
+	if s == "" {
+		return ""
+	}
+	b := []byte(s)
+	if b[0] >= 'a' && b[0] <= 'z' {
+		b[0] -= 32
+	}
+	return string(b)
+}
