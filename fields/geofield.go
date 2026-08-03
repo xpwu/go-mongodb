@@ -2,34 +2,34 @@ package fields
 
 import (
 	"github.com/xpwu/go-mongodb/field"
-	filter2 "github.com/xpwu/go-mongodb/filter"
+	"github.com/xpwu/go-mongodb/filter"
 	"github.com/xpwu/go-mongodb/geo"
-	index2 "github.com/xpwu/go-mongodb/index"
+	"github.com/xpwu/go-mongodb/index"
 	"github.com/xpwu/go-mongodb/updater"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type SpherePointField interface {
 	field.Field
-	filter2.BaseFilter[geo.SpherePoint]
+	filter.BaseFilter[geo.SpherePoint]
 	updater.BaseUpdater[geo.SpherePoint]
-	index2.BaseKey
-	Index2D() index2.Key
+	index.BaseKey
+	Index2D() index.Key
 	// Index2DWith overrides the default version and specify a different version for your 2dsphere index.
 	//
 	// https://www.mongodb.com/docs/manual/core/indexes/index-types/geospatial/2dsphere/2dsphere-index-versions/#2dsphere-index-versions
-	Index2DWith(version int) index2.Key
-	WithinPoly(polygon geo.Polygon) filter2.Filter
-	WithinMulPoly(polygon geo.MultiPolygon) filter2.Filter
-	WithinBigPoly(ring geo.Ring) filter2.Filter
-	WithinCircle(center geo.Coordinate, radians float64) filter2.Filter
+	Index2DWith(version int) index.Key
+	WithinPoly(polygon geo.Polygon) filter.Filter
+	WithinMulPoly(polygon geo.MultiPolygon) filter.Filter
+	WithinBigPoly(ring geo.Ring) filter.Filter
+	WithinCircle(center geo.Coordinate, radians float64) filter.Filter
 	// Near returns the documents from nearest to farthest.
 	// Near 根据分析，GeoJson 是按照WGS84的标准来计算的，定死半径为地球半径，所以maxDistance与minDistance使用了单位"米"
 	//
 	// https://www.mongodb.com/docs/manual/reference/operator/query/near/#mongodb-query-op.-near
 	//
 	// https://www.mongodb.com/docs/manual/reference/operator/query/maxDistance/#mongodb-query-op.-maxDistance
-	Near(point geo.SpherePoint, maxDistance float64, minDistance ...float64) filter2.Filter
+	Near(point geo.SpherePoint, maxDistance float64, minDistance ...float64) filter.Filter
 	Coordinate() FlatPointField
 }
 
@@ -41,8 +41,8 @@ func NewSpherePointField(name string) SpherePointField {
 	return &spherePointField{BaseField[geo.SpherePoint]{name: name}}
 }
 
-func (p *spherePointField) Index2D() index2.Key {
-	return index2.NewKey(p, index2.KeyType2dSphere)
+func (p *spherePointField) Index2D() index.Key {
+	return index.NewKey(p, index.KeyType2dSphere)
 }
 
 type versionKey struct {
@@ -51,26 +51,26 @@ type versionKey struct {
 }
 
 func (vk *versionKey) ToBsonD() bson.D {
-	return bson.D{{vk.fieldName, index2.KeyType2dSphere}}
+	return bson.D{{vk.fieldName, index.KeyType2dSphere}}
 }
 
 func (vk *versionKey) Options() bson.D {
 	return bson.D{{"2dsphereIndexVersion", vk.version}}
 }
 
-func (p *spherePointField) Index2DWith(version int) index2.Key {
+func (p *spherePointField) Index2DWith(version int) index.Key {
 	return &versionKey{
 		fieldName: p.FullName(),
 		version:   version,
 	}
 }
 
-func (p *spherePointField) WithinPoly(polygon geo.Polygon) filter2.Filter {
-	return filter2.New(p, "$geoWithin", bson.M{"$geometry": polygon})
+func (p *spherePointField) WithinPoly(polygon geo.Polygon) filter.Filter {
+	return filter.New(p, "$geoWithin", bson.M{"$geometry": polygon})
 }
 
-func (p *spherePointField) WithinMulPoly(polygon geo.MultiPolygon) filter2.Filter {
-	return filter2.New(p, "$geoWithin", bson.M{"$geometry": polygon})
+func (p *spherePointField) WithinMulPoly(polygon geo.MultiPolygon) filter.Filter {
+	return filter.New(p, "$geoWithin", bson.M{"$geometry": polygon})
 }
 
 func bigPolyQuery(ring geo.Ring) bson.M {
@@ -82,8 +82,8 @@ func bigPolyQuery(ring geo.Ring) bson.M {
 			"properties": bson.M{"name": "urn:x-mongodb:crs:strictwinding:EPSG:4326"}}}
 }
 
-func (p *spherePointField) WithinBigPoly(ring geo.Ring) filter2.Filter {
-	return filter2.New(p, "$geoWithin",
+func (p *spherePointField) WithinBigPoly(ring geo.Ring) filter.Filter {
+	return filter.New(p, "$geoWithin",
 		bson.M{"$geometry": bigPolyQuery(ring)})
 }
 
@@ -91,15 +91,15 @@ func (p *spherePointField) WithinBigPoly(ring geo.Ring) filter2.Filter {
 // The circle's radius measured in radians
 //
 // https://www.mongodb.com/docs/manual/reference/operator/query/centerSphere/#example
-func (p *spherePointField) WithinCircle(center geo.Coordinate, radians float64) filter2.Filter {
-	return filter2.New(p, "$geoWithin",
+func (p *spherePointField) WithinCircle(center geo.Coordinate, radians float64) filter.Filter {
+	return filter.New(p, "$geoWithin",
 		bson.M{"$centerSphere": bson.A{center, radians}})
 }
 
 // Near GeoJson 是按照WGS84的标准来计算的，定死半径为地球半径，所以 maxDistance minDistance 使用了单位"米"
 //
 // https://docs.mongodb.com/manual/reference/operator/query/maxDistance/
-func (p *spherePointField) Near(point geo.SpherePoint, maxDistance float64, minDistance ...float64) filter2.Filter {
+func (p *spherePointField) Near(point geo.SpherePoint, maxDistance float64, minDistance ...float64) filter.Filter {
 	var value interface{}
 	if len(minDistance) == 0 {
 		value = bson.M{"$geometry": point, "$maxDistance": maxDistance}
@@ -109,19 +109,19 @@ func (p *spherePointField) Near(point geo.SpherePoint, maxDistance float64, minD
 		panic("args error")
 	}
 
-	return filter2.New(p, "$nearSphere", value)
+	return filter.New(p, "$nearSphere", value)
 }
 
-func (p *spherePointField) IntersectPoly(polygon geo.Polygon) filter2.Filter {
-	return filter2.New(p, "$geoIntersects", bson.M{"$geometry": polygon})
+func (p *spherePointField) IntersectPoly(polygon geo.Polygon) filter.Filter {
+	return filter.New(p, "$geoIntersects", bson.M{"$geometry": polygon})
 }
 
-func (p *spherePointField) IntersectLineString(lineString geo.LineString) filter2.Filter {
-	return filter2.New(p, "$geoIntersects", bson.M{"$geometry": lineString})
+func (p *spherePointField) IntersectLineString(lineString geo.LineString) filter.Filter {
+	return filter.New(p, "$geoIntersects", bson.M{"$geometry": lineString})
 }
 
-func (p *spherePointField) IntersectBigPoly(ring geo.Ring) filter2.Filter {
-	return filter2.New(p, "$geoIntersects",
+func (p *spherePointField) IntersectBigPoly(ring geo.Ring) filter.Filter {
+	return filter.New(p, "$geoIntersects",
 		bson.M{"$geometry": bigPolyQuery(ring)})
 }
 
@@ -131,33 +131,33 @@ func (p *spherePointField) Coordinate() FlatPointField {
 
 type FlatPointField interface {
 	field.Field
-	filter2.BaseFilter[geo.FlatPoint]
+	filter.BaseFilter[geo.FlatPoint]
 	updater.BaseUpdater[geo.FlatPoint]
-	index2.BaseKey
-	Index2D() index2.Key
+	index.BaseKey
+	Index2D() index.Key
 	// Index2DWith changes the default precision.
 	// You can specify a bits value between 1 and 32, inclusive.
 	// By default, 2d indexes use 26 bits of precision, which is equivalent to approximately two feet (60 centimeters).
 	//
 	//https://www.mongodb.com/docs/manual/core/indexes/index-types/geospatial/2d/create/define-location-precision/#define-location-precision-for-a-2d-index
-	Index2DWith(precision int) index2.Key
+	Index2DWith(precision int) index.Key
 	// Index2DWithRange changes the location range of a 2d index, specify the min and max options when you create the index.
 	//
 	// https://www.mongodb.com/docs/manual/core/indexes/index-types/geospatial/2d/create/define-location-range/#define-location-range-for-a-2d-index
-	Index2DWithRange(min, max float32) index2.Key
-	WithinBox(bottomLeft, upperRight geo.Coordinate) filter2.Filter
-	WithinRing(ring geo.Ring) filter2.Filter
+	Index2DWithRange(min, max float32) index.Key
+	WithinBox(bottomLeft, upperRight geo.Coordinate) filter.Filter
+	WithinRing(ring geo.Ring) filter.Filter
 	// WithinCircle returns the flat point that are within the bounds of the circle.
 	//The circle's radius, as measured in the units used by the coordinate system.
 	//
 	// https://www.mongodb.com/docs/manual/reference/operator/query/center/#mongodb-query-op.-center
 	// https://www.mongodb.com/docs/manual/reference/operator/query/center/#behavior
-	WithinCircle(center geo.Coordinate, radiusNoUnit float32) filter2.Filter
+	WithinCircle(center geo.Coordinate, radiusNoUnit float32) filter.Filter
 	// Near returns the documents from nearest to farthest.
 	// The measuring units for the maximum distance are determined by the coordinate system in use.
 	//
 	// https://www.mongodb.com/docs/manual/reference/operator/query/maxDistance/#mongodb-query-op.-maxDistance
-	Near(point geo.Coordinate, maxDistance float64) filter2.Filter
+	Near(point geo.Coordinate, maxDistance float64) filter.Filter
 }
 
 type flatPointField struct {
@@ -168,8 +168,8 @@ func NewFlatPointField(name string) FlatPointField {
 	return &flatPointField{BaseField[geo.FlatPoint]{name: name}}
 }
 
-func (f *flatPointField) Index2D() index2.Key {
-	return index2.NewKey(f, index2.KeyType2d)
+func (f *flatPointField) Index2D() index.Key {
+	return index.NewKey(f, index.KeyType2d)
 }
 
 type precisionKey struct {
@@ -178,14 +178,14 @@ type precisionKey struct {
 }
 
 func (vk *precisionKey) ToBsonD() bson.D {
-	return bson.D{{vk.fieldName, index2.KeyType2d}}
+	return bson.D{{vk.fieldName, index.KeyType2d}}
 }
 
 func (vk *precisionKey) Options() bson.D {
 	return bson.D{{"bits", vk.precision}}
 }
 
-func (f *flatPointField) Index2DWith(precision int) index2.Key {
+func (f *flatPointField) Index2DWith(precision int) index.Key {
 	return &precisionKey{
 		fieldName: f.FullName(),
 		precision: precision,
@@ -199,14 +199,14 @@ type rangeKey struct {
 }
 
 func (vk *rangeKey) ToBsonD() bson.D {
-	return bson.D{{vk.fieldName, index2.KeyType2d}}
+	return bson.D{{vk.fieldName, index.KeyType2d}}
 }
 
 func (vk *rangeKey) Options() bson.D {
 	return bson.D{{"min", vk.min}, {"max", vk.max}}
 }
 
-func (f *flatPointField) Index2DWithRange(min, max float32) index2.Key {
+func (f *flatPointField) Index2DWithRange(min, max float32) index.Key {
 	return &rangeKey{
 		fieldName: f.FullName(),
 		max:       max,
@@ -214,13 +214,13 @@ func (f *flatPointField) Index2DWithRange(min, max float32) index2.Key {
 	}
 }
 
-func (f *flatPointField) WithinBox(bottomLeft, upperRight geo.Coordinate) filter2.Filter {
-	return filter2.New(f, "$geoWithin",
+func (f *flatPointField) WithinBox(bottomLeft, upperRight geo.Coordinate) filter.Filter {
+	return filter.New(f, "$geoWithin",
 		bson.M{"$box": bson.A{bottomLeft, upperRight}})
 }
 
-func (f *flatPointField) WithinRing(ring geo.Ring) filter2.Filter {
-	return filter2.New(f, "$geoWithin", bson.M{"$polygon": ring})
+func (f *flatPointField) WithinRing(ring geo.Ring) filter.Filter {
+	return filter.New(f, "$geoWithin", bson.M{"$polygon": ring})
 }
 
 // WithinCircle returns the flat point that are within the bounds of the circle.
@@ -228,8 +228,8 @@ func (f *flatPointField) WithinRing(ring geo.Ring) filter2.Filter {
 //
 // https://www.mongodb.com/docs/manual/reference/operator/query/center/#mongodb-query-op.-center
 // https://www.mongodb.com/docs/manual/reference/operator/query/center/#behavior
-func (f *flatPointField) WithinCircle(center geo.Coordinate, radiusNoUnit float32) filter2.Filter {
-	return filter2.New(f, "$geoWithin",
+func (f *flatPointField) WithinCircle(center geo.Coordinate, radiusNoUnit float32) filter.Filter {
+	return filter.New(f, "$geoWithin",
 		bson.M{"$center": bson.A{center, radiusNoUnit}})
 }
 
@@ -237,7 +237,7 @@ func (f *flatPointField) WithinCircle(center geo.Coordinate, radiusNoUnit float3
 // The measuring units for the maximum distance are determined by the coordinate system in use.
 //
 // https://www.mongodb.com/docs/manual/reference/operator/query/maxDistance/#mongodb-query-op.-maxDistance
-func (f *flatPointField) Near(point geo.Coordinate, maxDistance float64) filter2.Filter {
-	return filter2.And(filter2.New(f, "$near", point),
-		filter2.New(f, "$maxDistance", maxDistance))
+func (f *flatPointField) Near(point geo.Coordinate, maxDistance float64) filter.Filter {
+	return filter.And(filter.New(f, "$near", point),
+		filter.New(f, "$maxDistance", maxDistance))
 }

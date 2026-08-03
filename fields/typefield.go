@@ -3,9 +3,9 @@ package fields
 import (
 	"fmt"
 	"github.com/xpwu/go-mongodb/field"
-	filter2 "github.com/xpwu/go-mongodb/filter"
+	"github.com/xpwu/go-mongodb/filter"
 	"github.com/xpwu/go-mongodb/index"
-	updater2 "github.com/xpwu/go-mongodb/updater"
+	"github.com/xpwu/go-mongodb/updater"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -15,19 +15,19 @@ type Integer interface {
 }
 
 type IntegerFilter[T Integer] interface {
-	filter2.ComparableFilter[T]
-	Mod(divisor, remainder T) filter2.Filter
+	filter.ComparableFilter[T]
+	Mod(divisor, remainder T) filter.Filter
 }
 
 type IntegerField[T Integer] interface {
 	field.Field
 	IntegerFilter[T]
-	updater2.ComputableUpdater[T, T]
+	updater.ComputableUpdater[T, T]
 	index.BaseKey
 }
 
-func (b *BaseField[T]) Mod(divisor, remainder T) filter2.Filter {
-	return filter2.New(b, "$mod", bson.A{divisor, remainder})
+func (b *BaseField[T]) Mod(divisor, remainder T) filter.Filter {
+	return filter.New(b, "$mod", bson.A{divisor, remainder})
 }
 
 func NewIntegerField[T Integer](name string) IntegerField[T] {
@@ -55,7 +55,7 @@ type UnInteger interface {
 type UnIntegerField[T UnInteger, VT Integer] interface {
 	field.Field
 	IntegerFilter[T]
-	updater2.ComputableUpdater[T, VT]
+	updater.ComputableUpdater[T, VT]
 	index.BaseKey
 }
 
@@ -63,8 +63,8 @@ type unIntegerField[T UnInteger, VT Integer] struct {
 	BaseField[T]
 }
 
-func (u *unIntegerField[T, VT]) Inc(num VT) updater2.Updater {
-	return updater2.New(u, "$inc", num)
+func (u *unIntegerField[T, VT]) Inc(num VT) updater.Updater {
+	return updater.New(u, "$inc", num)
 }
 
 func NewUnIntegerField[T UnInteger, VT Integer](name string) UnIntegerField[T, VT] {
@@ -88,14 +88,14 @@ var (
 )
 
 type StringFilter interface {
-	Regex(regex bson.Regex) filter2.Filter
-	filter2.ComparableFilter[string]
+	Regex(regex bson.Regex) filter.Filter
+	filter.ComparableFilter[string]
 }
 
 type StringField interface {
 	field.Field
 	StringFilter
-	updater2.BaseUpdater[string]
+	updater.BaseUpdater[string]
 	index.BaseKey
 }
 
@@ -103,8 +103,8 @@ type stringField struct {
 	BaseField[string]
 }
 
-func (s *stringField) Regex(regex bson.Regex) filter2.Filter {
-	return filter2.New(s, "$regex", regex)
+func (s *stringField) Regex(regex bson.Regex) filter.Filter {
+	return filter.New(s, "$regex", regex)
 }
 
 func NewStringField(name string) StringField {
@@ -113,8 +113,8 @@ func NewStringField(name string) StringField {
 
 type ComparableField[T ~bool | bson.ObjectID] interface {
 	field.Field
-	filter2.ComparableFilter[T]
-	updater2.BaseUpdater[T]
+	filter.ComparableFilter[T]
+	updater.BaseUpdater[T]
 	index.BaseKey
 }
 
@@ -128,8 +128,8 @@ var NewBoolField = NewComparableField[bool]
 
 type ComputableField[T ~float32 | ~float64] interface {
 	field.Field
-	filter2.BaseFilter[T]
-	updater2.ComputableUpdater[T, T]
+	filter.BaseFilter[T]
+	updater.ComputableUpdater[T, T]
 	index.BaseKey
 }
 
@@ -158,12 +158,12 @@ func SubField(selfName, fieldName string) string {
 
 type BaseStructField[T any] interface {
 	field.Field
-	filter2.BaseFilter[T]
-	updater2.BaseUpdater[T]
+	filter.BaseFilter[T]
+	updater.BaseUpdater[T]
 }
 
 type ComparableStructField[T any] interface {
 	field.Field
-	filter2.ComparableFilter[T]
-	updater2.BaseUpdater[T]
+	filter.ComparableFilter[T]
+	updater.BaseUpdater[T]
 }
