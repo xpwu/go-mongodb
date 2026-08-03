@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"github.com/xpwu/go-mongodb/filter"
 	"github.com/xpwu/go-mongodb/index"
 	"github.com/xpwu/go-mongodb/updater"
@@ -191,19 +192,23 @@ var clients = sync.Map{}
 //
 // Callers should treat Config as immutable and provide consistent options
 // across calls. Inconsistent options after the first call are silently ignored.
-func GetFromCache(config *Config, opts ...xopt.Option) (client *mongo.Client, err error) {
-	c, ok := clients.Load(*config)
+func GetFromCache(config Config, opts ...xopt.Option) (client *mongo.Client, err error) {
+	c, ok := clients.Load(config)
 	if ok {
 		return c.(*mongo.Client), nil
 	}
 
-	nc, err := NewClient(config, opts...)
+	nc, err := NewClient(&config, opts...)
 	if err != nil {
 		return
 	}
 
-	c, ok = clients.LoadOrStore(*config, nc)
-	return c.(*mongo.Client), nil
+	if c, loaded := clients.LoadOrStore(config, nc); loaded {
+		_ = nc.Disconnect(context.Background())
+		return c.(*mongo.Client), nil
+	}
+
+	return nc, nil
 }
 
 // MustGet returns a cached MongoDB client for the given Config,
@@ -220,7 +225,7 @@ func GetFromCache(config *Config, opts ...xopt.Option) (client *mongo.Client, er
 // This function should never be called with varying options for the same
 // Config. Such misuse will not change the cached client and may indicate
 // a configuration error in the application.
-func MustGet(config *Config, opts ...xopt.Option) *mongo.Client {
+func MustGet(config Config, opts ...xopt.Option) *mongo.Client {
 	r, err := GetFromCache(config, opts...)
 	if err != nil {
 		panic(err)
