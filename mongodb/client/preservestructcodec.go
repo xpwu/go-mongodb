@@ -110,13 +110,13 @@ func lookupElementEncoder(ec bson.EncodeContext, origEncoder bson.ValueEncoder, 
 	return currEncoder, currVal, err
 }
 
-// PascalStructCodec is the Codec used for struct values.
+// PreserveStructCodec is the Codec used for struct values.
 //
 /*
 Derived from: go.mongodb.org/mongo-driver/v2@v2.8.0/bson/struct_codec.go
 
 Modifications:
-  - Field names preserve PascalCase instead of being forcibly lowercased
+  - Field names preserve OriginalName instead of being forcibly lowercased
   - EncodeContext reconstruction removed (v2 said no, so we stopped asking)
   - Field-level `omitempty`, `truncate` and `minsize` flags are ignored (v2 made propagation impossible; implement MarshalBSON if you need them)
   - No cycle detection (same as upstream; don't self-reference your structs, please)
@@ -132,7 +132,7 @@ leaving exactly one window. It was very inspiring. 🙃
 基于: go.mongodb.org/mongo-driver/v2@v2.8.0/bson/struct_codec.go
 
 修改内容:
-  - 字段名保留 PascalCase，不再被强制转为小写
+  - 字段名保留 OriginalName，不再被强制转为小写
   - 移除 EncodeContext 重建逻辑（v2 不让，那就算了）
   - 字段级 `omitempty`、`truncate` 和 `minsize` 标记被静默忽略（v2 让传递变得不可能；如有需要请自行实现 MarshalBSON）
   - 无循环引用检测（与上游行为一致；别让你的结构体引用自己，谢谢）
@@ -143,7 +143,7 @@ leaving exactly one window. It was very inspiring. 🙃
 特别感谢 MongoDB Go Driver v2 团队把每一扇门都焊死，
 只留下一扇窗户。非常有创作动力。🙃
 */
-type PascalStructCodec struct {
+type PreserveStructCodec struct {
 	cache            sync.Map // map[reflect.Type]*structDescription
 	inlineMapEncoder mapElementsEncoder
 
@@ -179,12 +179,12 @@ type PascalStructCodec struct {
 }
 
 var (
-	_ bson.ValueEncoder = &PascalStructCodec{}
-	_ bson.ValueDecoder = &PascalStructCodec{}
+	_ bson.ValueEncoder = &PreserveStructCodec{}
+	_ bson.ValueDecoder = &PreserveStructCodec{}
 )
 
-// NewPascalStructCodec returns a StructCodec that uses p for struct tag parsing.
-func NewPascalStructCodec(r *bson.Registry) (codec *PascalStructCodec, err error) {
+// NewPreserveStructCodec returns a StructCodec that uses x.ParseStructTags for struct tag parsing.
+func NewPreserveStructCodec(r *bson.Registry) (codec *PreserveStructCodec, err error) {
 	var elemEncoder mapElementsEncoder = nil
 	if r != nil {
 		mapCodec, err := r.LookupEncoder(x.TypeFor[map[string]interface{}]())
@@ -194,18 +194,18 @@ func NewPascalStructCodec(r *bson.Registry) (codec *PascalStructCodec, err error
 		ok := true
 		elemEncoder, ok = mapCodec.(mapElementsEncoder)
 		if !ok {
-			return nil, errors.New("can NOT find mapElementsEncoder for NewPascalStructCodec")
+			return nil, errors.New("can NOT find mapElementsEncoder for NewPreserveStructCodec")
 		}
 	}
 
-	return &PascalStructCodec{
+	return &PreserveStructCodec{
 		inlineMapEncoder:                 elemEncoder,
 		overwriteDuplicatedInlinedFields: true,
 	}, nil
 }
 
 // EncodeValue handles encoding generic struct types.
-func (sc *PascalStructCodec) EncodeValue(ec bson.EncodeContext, vw bson.ValueWriter, val reflect.Value) error {
+func (sc *PreserveStructCodec) EncodeValue(ec bson.EncodeContext, vw bson.ValueWriter, val reflect.Value) error {
 	if !val.IsValid() || val.Kind() != reflect.Struct {
 		return bson.ValueEncoderError{Name: "StructCodec.EncodeValue", Kinds: []reflect.Kind{reflect.Struct}, Received: val}
 	}
@@ -317,7 +317,7 @@ func newDecodeError(key string, original error) error {
 // DecodeValue implements the Codec interface.
 // By default, map types in val will not be cleared. If a map has existing key/value pairs, it will be extended with the new ones from vr.
 // For slices, the decoder will set the length of the slice to zero and append all elements. The underlying array will not be cleared.
-func (sc *PascalStructCodec) DecodeValue(dc bson.DecodeContext, vr bson.ValueReader, val reflect.Value) error {
+func (sc *PreserveStructCodec) DecodeValue(dc bson.DecodeContext, vr bson.ValueReader, val reflect.Value) error {
 	if !val.CanSet() || val.Kind() != reflect.Struct {
 		return bson.ValueDecoderError{Name: "StructCodec.DecodeValue", Kinds: []reflect.Kind{reflect.Struct}, Received: val}
 	}
@@ -536,7 +536,7 @@ func (bi byIndex) Less(i, j int) bool {
 	return len(bi[i].inline) < len(bi[j].inline)
 }
 
-func (sc *PascalStructCodec) describeStruct(
+func (sc *PreserveStructCodec) describeStruct(
 	r *bson.Registry,
 	t reflect.Type,
 	useJSONStructTags bool,
@@ -559,7 +559,7 @@ func (sc *PascalStructCodec) describeStruct(
 	return ds, nil
 }
 
-func (sc *PascalStructCodec) describeStructSlow(
+func (sc *PreserveStructCodec) describeStructSlow(
 	r *bson.Registry,
 	t reflect.Type,
 	useJSONStructTags bool,

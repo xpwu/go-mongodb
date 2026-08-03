@@ -5,6 +5,7 @@ import (
 	"github.com/xpwu/go-db-mongo/mongodb/index"
 	"github.com/xpwu/go-db-mongo/mongodb/updater"
 	"github.com/xpwu/go-db-mongo/mongodb/x"
+	"github.com/xpwu/go-db-mongo/mongodb/xopt"
 	"github.com/xpwu/go-x/exe"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -15,10 +16,10 @@ import (
 	"time"
 )
 
-func GetPascalFieldRegistry(bsonOpts *options.BSONOptions) (r *bson.Registry, err error) {
+func GetPreserveFieldRegistry(bsonOpts *options.BSONOptions) (r *bson.Registry, err error) {
 	r = GetLowerFieldRegistry()
 
-	structCodec, err := NewPascalStructCodec(r)
+	structCodec, err := NewPreserveStructCodec(r)
 	if err != nil {
 		return nil, err
 	}
@@ -123,53 +124,19 @@ func GetLowerFieldRegistry() *bson.Registry {
 	return r
 }
 
-type option struct {
-	bsonOpts    *options.BSONOptions
-	registry    *bson.Registry
-	pascalField bool
-}
-
-type Option func(opt *option)
-
-func WithBsonOptions(bsonOpts *options.BSONOptions) Option {
-	return func(opt *option) {
-		opt.bsonOpts = bsonOpts
-	}
-}
-
-func WithRegistry(registry *bson.Registry) Option {
-	return func(opt *option) {
-		opt.registry = registry
-	}
-}
-
-func WithPascalField() Option {
-	return func(opt *option) {
-		opt.pascalField = true
-	}
-}
-
-func getDefaultOpt() *option {
-	return &option{
-		bsonOpts:    nil,
-		registry:    nil,
-		pascalField: false,
-	}
-}
-
-func NewClient(config *Config, opts ...Option) (client *mongo.Client, err error) {
-	opt := getDefaultOpt()
+func NewClient(config *Config, opts ...xopt.Option) (client *mongo.Client, err error) {
+	opt := xopt.GetDefaultOpts()
 	for _, o := range opts {
 		o(opt)
 	}
-	if opt.registry == nil {
-		if opt.pascalField {
-			opt.registry, err = GetPascalFieldRegistry(opt.bsonOpts)
+	if opt.Registry == nil {
+		if opt.PreserveField {
+			opt.Registry, err = GetPreserveFieldRegistry(opt.BsonOpts)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			opt.registry = GetLowerFieldRegistry()
+			opt.Registry = GetLowerFieldRegistry()
 		}
 	}
 
@@ -183,8 +150,8 @@ func NewClient(config *Config, opts ...Option) (client *mongo.Client, err error)
 		SetReadPreference(readpref.SecondaryPreferred()).
 		SetMinPoolSize(1)
 
-	if opt.bsonOpts != nil {
-		mongoOpt.SetBSONOptions(opt.bsonOpts)
+	if opt.BsonOpts != nil {
+		mongoOpt.SetBSONOptions(opt.BsonOpts)
 	}
 
 	// 然后是URI 携带的参数，最后是配置中明确指明的设置
@@ -197,7 +164,7 @@ func NewClient(config *Config, opts ...Option) (client *mongo.Client, err error)
 			PasswordSet: true,
 		})
 
-	mongoOpt.SetRegistry(opt.registry)
+	mongoOpt.SetRegistry(opt.Registry)
 
 	client, err = mongo.Connect(mongoOpt)
 
@@ -208,7 +175,7 @@ var clients = sync.Map{}
 
 // GetFromCache gets or creates a client using the config from the cache.
 // The config is the ID of the client.
-func GetFromCache(config *Config, opts ...Option) (client *mongo.Client, err error) {
+func GetFromCache(config *Config, opts ...xopt.Option) (client *mongo.Client, err error) {
 	c, ok := clients.Load(*config)
 	if ok {
 		return c.(*mongo.Client), nil
@@ -223,7 +190,7 @@ func GetFromCache(config *Config, opts ...Option) (client *mongo.Client, err err
 	return c.(*mongo.Client), nil
 }
 
-func MustGet(config *Config, opts ...Option) *mongo.Client {
+func MustGet(config *Config, opts ...xopt.Option) *mongo.Client {
 	r, err := GetFromCache(config, opts...)
 	if err != nil {
 		panic(err)

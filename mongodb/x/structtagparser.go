@@ -6,7 +6,7 @@
 
 // Copy From: go.mongodb.org/mongo-driver/v2@v2.8.0/bson/struct_tag_parser.go
 
-// Package tagparser
+// Package x
 /*
 Derived from: go.mongodb.org/mongo-driver/v2@v2.8.0/bson/struct_tag_parser.go
 
