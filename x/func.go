@@ -18,14 +18,18 @@ func BaseTypeName(t reflect.Type) string {
 	return name
 }
 
-// SanitizePackageName 从路径中提取最后一段，并转换为合法的 Go 包名
-func SanitizePackageName(path string) string {
+func LastSubPath(path string) string {
 	// 1. 获取 '/' 分隔的最后一段
 	if idx := strings.LastIndex(path, "/"); idx != -1 {
 		path = path[idx+1:]
 	}
 
-	// 2. 替换非 Go 包名合法字符（字母、数字、下划线）为 '_'
+	return path
+}
+
+// SanitizePackageName 并转换路径为合法的 Go 包名
+func SanitizePackageName(path string) string {
+	// 1. 替换非 Go 包名合法字符（字母、数字、下划线）为 '_'
 	var builder strings.Builder
 	for _, r := range path {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
@@ -36,12 +40,12 @@ func SanitizePackageName(path string) string {
 	}
 	result := builder.String()
 
-	// 3. 如果结果为空
+	// 2. 如果结果为空
 	if result == "" {
 		return result
 	}
 
-	// 4. 如果首字符是数字，替换为_
+	// 3. 如果首字符是数字，替换为_
 	if result[0] >= '0' && result[0] <= '9' {
 		result = "_" + result[1:]
 	}
