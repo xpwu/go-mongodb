@@ -184,24 +184,24 @@ var (
 )
 
 // NewPascalStructCodec returns a StructCodec that uses p for struct tag parsing.
-func NewPascalStructCodec(r *bson.Registry) *PascalStructCodec {
+func NewPascalStructCodec(r *bson.Registry) (codec *PascalStructCodec, err error) {
 	var elemEncoder mapElementsEncoder = nil
 	if r != nil {
 		mapCodec, err := r.LookupEncoder(x.TypeFor[map[string]interface{}]())
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 		ok := true
 		elemEncoder, ok = mapCodec.(mapElementsEncoder)
 		if !ok {
-			panic(errors.New("can NOT find mapElementsEncoder for NewPascalStructCodec"))
+			return nil, errors.New("can NOT find mapElementsEncoder for NewPascalStructCodec")
 		}
 	}
 
 	return &PascalStructCodec{
 		inlineMapEncoder:                 elemEncoder,
 		overwriteDuplicatedInlinedFields: true,
-	}
+	}, nil
 }
 
 // EncodeValue handles encoding generic struct types.
