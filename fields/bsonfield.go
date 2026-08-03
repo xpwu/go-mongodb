@@ -34,4 +34,82 @@ type ObjectIDField = ComparableField[bson.ObjectID]
 
 var NewObjectIDField = NewComparableField[bson.ObjectID]
 
-// todo Raw RawValue
+type RawField interface {
+	field.Field
+	filter.BaseFilter[bson.Raw]
+	updater.BaseUpdater[bson.Raw]
+}
+
+func NewRawField(name string) RawField {
+	return &BaseField[bson.Raw]{name}
+}
+
+type RawValueField interface {
+	field.Field
+	filter.BaseFilter[bson.RawValue]
+	updater.BaseUpdater[bson.RawValue]
+}
+
+func NewRawValueField(name string) RawValueField {
+	return &BaseField[bson.RawValue]{name}
+}
+
+type RawArrayField interface {
+	field.Field
+	filter.BaseFilter[bson.RawArray]
+	updater.BaseUpdater[bson.RawArray]
+}
+
+func NewRawArrayField(name string) RawArrayField {
+	return &BaseField[bson.RawArray]{name}
+}
+
+type RawElementField interface {
+	field.Field
+	filter.BaseFilter[bson.RawElement]
+	updater.BaseUpdater[bson.RawElement]
+}
+
+func NewRawElementField(name string) RawElementField {
+	return &BaseField[bson.RawElement]{name}
+}
+
+type DateTimeField interface {
+	field.Field
+	filter.ComparableFilter[bson.DateTime]
+	updater.BaseUpdater[bson.DateTime]
+}
+
+func NewDateTimeField(name string) DateTimeField {
+	return &BaseField[bson.DateTime]{name}
+}
+
+type TimestampField interface {
+	field.Field
+	filter.ComparableFilterField[bson.Timestamp]
+	updater.BaseUpdater[bson.Timestamp]
+}
+
+func NewTimestampField(name string) TimestampField {
+	return &BaseField[bson.Timestamp]{name}
+}
+
+type BsonMField interface {
+	field.Field
+	filter.BaseFilter[bson.M]
+	updater.BaseUpdater[bson.M]
+}
+
+func NewBsonMField(name string) BsonMField {
+	return &BaseField[bson.M]{name}
+}
+
+type BsonAField interface {
+	field.Field
+	filter.BaseFilter[bson.A]
+	updater.BaseUpdater[bson.A]
+}
+
+func NewBsonAField(name string) BsonAField {
+	return &BaseField[bson.A]{name}
+}
