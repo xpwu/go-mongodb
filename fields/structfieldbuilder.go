@@ -216,7 +216,7 @@ func getRuntimeInfo() (pkg, dir string) {
 	return
 }
 
-func BuildColl[T any](builder *StructFieldBuilder) {
+func BuildStruct[T any](builder *StructFieldBuilder) {
 	if builder.opt.dir == "" || builder.opt.targetPkg == "" {
 		builder.targetPkg, builder.dir = getRuntimeInfo()
 	} else {
