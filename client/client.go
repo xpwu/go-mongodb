@@ -124,6 +124,12 @@ func GetLowerFieldRegistry() *bson.Registry {
 	return r
 }
 
+// NewClient creates a new MongoDB client.
+// It is primarily intended for internal use by GetFromCache.
+// Most callers should use GetFromCache instead.
+//
+// Options are applied once and must not be relied upon to reconfigure
+// an existing client.
 func NewClient(config *Config, opts ...xopt.Option) (client *mongo.Client, err error) {
 	opt := xopt.GetDefaultOpts()
 	for _, o := range opts {
@@ -173,8 +179,18 @@ func NewClient(config *Config, opts ...xopt.Option) (client *mongo.Client, err e
 
 var clients = sync.Map{}
 
-// GetFromCache gets or creates a client using the config from the cache.
-// The config is the ID of the client.
+// GetFromCache returns a cached MongoDB client for the given Config.
+// The Config uniquely identifies a client and is expected to originate
+// from infrastructure/deployment configuration (e.g. environment variables,
+// config files).
+//
+// Options (xopt.Option) are applied only during the initial creation of
+// the client. If a client already exists for the given Config, subsequent
+// calls ignore any provided options and return the existing instance.
+// This ensures stable runtime behavior and avoids connection pool churn.
+//
+// Callers should treat Config as immutable and provide consistent options
+// across calls. Inconsistent options after the first call are silently ignored.
 func GetFromCache(config *Config, opts ...xopt.Option) (client *mongo.Client, err error) {
 	c, ok := clients.Load(*config)
 	if ok {
@@ -190,6 +206,20 @@ func GetFromCache(config *Config, opts ...xopt.Option) (client *mongo.Client, er
 	return c.(*mongo.Client), nil
 }
 
+// MustGet returns a cached MongoDB client for the given Config,
+// panicking if the client cannot be created.
+//
+// It delegates to GetFromCache and is intended for use in initialization
+// code where a failure to obtain a database client is considered fatal.
+//
+// Like GetFromCache, Config uniquely identifies the client, and any
+// xopt.Options are applied only during the initial creation. Subsequent
+// calls with the same Config ignore new options and return the existing
+// client.
+//
+// This function should never be called with varying options for the same
+// Config. Such misuse will not change the cached client and may indicate
+// a configuration error in the application.
 func MustGet(config *Config, opts ...xopt.Option) *mongo.Client {
 	r, err := GetFromCache(config, opts...)
 	if err != nil {
