@@ -11,6 +11,7 @@ import (
 	"github.com/xpwu/go-mongodb/geo"
 	"github.com/xpwu/go-mongodb/updater"
 	"github.com/xpwu/go-mongodb/x"
+	"github.com/xpwu/go-mongodb/xopt"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"os"
 	"path"
@@ -85,48 +86,25 @@ type StructFieldBuilder struct {
 
 type builderOption struct {
 	useJSONStructTags bool
-	lowerField        bool
+	preserveField     bool
 	ignoreTagErr      bool
-	dir               string
-	targetPkg         string
+
+	dir       string
+	targetPkg string
 }
 
-type BuilderOption func(option *builderOption)
-
-func UseJsonTag() BuilderOption {
-	return func(option *builderOption) {
-		option.useJSONStructTags = true
+func NewStructFieldBuilder(opts ...xopt.Option) *StructFieldBuilder {
+	xop := xopt.GetDefaultOpts()
+	for _, f := range opts {
+		f(xop)
 	}
-}
-
-func LowerField() BuilderOption {
-	return func(option *builderOption) {
-		option.lowerField = true
-	}
-}
-
-// IgnoreTagErr 忽略 minsize & truncate & omitempty tag的报错
-func IgnoreTagErr() BuilderOption {
-	return func(option *builderOption) {
-		option.ignoreTagErr = true
-	}
-}
-
-//func WithDirAndPkg(dir, pkg string) BuilderOption {
-//	return func(option *builderOption) {
-//		option.dir = dir
-//		option.targetPkg = pkg
-//	}
-//}
-
-func NewStructFieldBuilder(opts ...BuilderOption) *StructFieldBuilder {
 	op := &builderOption{
 		useJSONStructTags: false,
-		lowerField:        false,
-		ignoreTagErr:      false,
+		preserveField:     xop.PreserveField,
+		ignoreTagErr:      xop.IgnoreTagErr,
 	}
-	for _, f := range opts {
-		f(op)
+	if xop.BsonOpts != nil {
+		op.useJSONStructTags = xop.BsonOpts.UseJSONStructTags
 	}
 
 	b := &StructFieldBuilder{
@@ -238,13 +216,6 @@ func (b *StructFieldBuilder) Build(rt reflect.Type) {
 		b.targetPkg = b.opt.targetPkg
 		b.dir = b.opt.dir
 	}
-
-	//b.targetPkg = rt.PkgPath()
-	//if b.targetPkg == "" {
-	//	// 基本类型 就取当前的pkg, 基本类型都是预生成在此pkg中
-	//	// 对于其他pkg为空的类型 暂不支持
-	//	b.targetPkg = reflect.TypeOf(b).Elem().PkgPath()
-	//}
 
 	b.build(rt)
 }
@@ -581,11 +552,11 @@ func (b *StructFieldBuilder) buildStruct(t reflect.Type) (ft TypeInfo, ok bool) 
 		if f.PkgPath != "" {
 			continue
 		}
-		tag, _ := x.ParseStruct(f, b.opt.lowerField, b.opt.useJSONStructTags)
+		tag, _ := x.ParseStruct(f, !b.opt.preserveField, b.opt.useJSONStructTags)
 		if tag.Skip {
 			continue
 		}
-		if !b.opt.lowerField && (tag.OmitEmpty || tag.MinSize || tag.Truncate) && !b.opt.ignoreTagErr {
+		if b.opt.preserveField && (tag.OmitEmpty || tag.MinSize || tag.Truncate) && !b.opt.ignoreTagErr {
 			if !b.opt.ignoreTagErr {
 				panic(errors.New(fmt.Sprintf(
 					"NOT supported tag: minsize & truncate & omitempty are used in %s.%s.%s. \n"+

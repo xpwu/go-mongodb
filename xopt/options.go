@@ -26,18 +26,20 @@ func WithRegistry(registry *bson.Registry) Option {
 	}
 }
 
-func WithPreserveField() Option {
+// WithPreserveField ignoreTagErr 忽略 minsize & truncate & omitempty tag的报错
+func WithPreserveField(ignoreTagErr bool) Option {
 	return func(opt *Opts) {
 		opt.PreserveField = true
+		opt.IgnoreTagErr = ignoreTagErr
 	}
 }
 
 // IgnoreTagErr 忽略 minsize & truncate & omitempty tag的报错
-func IgnoreTagErr() Option {
-	return func(option *Opts) {
-		option.IgnoreTagErr = true
-	}
-}
+//func IgnoreTagErr() Option {
+//	return func(option *Opts) {
+//		option.IgnoreTagErr = true
+//	}
+//}
 
 func GetDefaultOpts() *Opts {
 	return &Opts{
