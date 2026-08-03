@@ -1,9 +1,9 @@
-package newfield
+package userinfo
 
 import (
-	"github.com/xpwu/go-mongodb/demo/elsejson"
-	"github.com/xpwu/go-mongodb/demo/newfield/base"
 	"github.com/xpwu/go-mongodb/geo"
+	"github.com/xpwu/go-mongodb/zdemo/elsetype"
+	"github.com/xpwu/go-mongodb/zdemo/userinfo/base"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -11,7 +11,7 @@ type Wx struct {
 	Age    *bson.Decimal128
 	Time   *int
 	Order  base.Order
-	Third  elsejson.ThirdParty
+	Third  elsetype.ThirdParty
 	Addr   geo.SpherePoint
 	Player geo.FlatPoint
 }
