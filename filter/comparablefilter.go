@@ -12,7 +12,7 @@ type ComparableFilterField[T any] interface {
 // ComparableFilter T ~ comparable | EqualAble
 type ComparableFilter[T any] interface {
 	BaseFilter[T]
-	Eq(value T) Filter
+	Eq(value T) PartialIndexFilter
 	EqField(f ComparableFilterField[T]) Filter
 
 	// Ne selects documents
@@ -24,7 +24,7 @@ type ComparableFilter[T any] interface {
 	Ne(value T) Filter
 	NeField(f ComparableFilterField[T]) Filter
 
-	In(values []T) Filter
+	In(values []T) PartialIndexFilter
 
 	// Nin selects documents where:
 	//

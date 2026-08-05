@@ -19,7 +19,7 @@ func (b *BaseField[T]) FullName() string {
 	return b.name
 }
 
-func (b *BaseField[T]) Exist() filter.Filter {
+func (b *BaseField[T]) Exist() filter.PartialIndexFilter {
 	return filter.Exist(b)
 }
 
@@ -27,36 +27,36 @@ func (b *BaseField[T]) NotExist() filter.Filter {
 	return filter.NotExist(b)
 }
 
-func (b *BaseField[T]) Type(t bson.Type) filter.Filter {
+func (b *BaseField[T]) Type(t bson.Type) filter.PartialIndexFilter {
 	return filter.Type(b, t)
 }
 
-func (b *BaseField[T]) Gt(value T) filter.Filter {
-	return filter.CompareByValue(b, filter.GT, value)
+func (b *BaseField[T]) Gt(value T) filter.PartialIndexFilter {
+	return filter.AsPartialIndexFilter(filter.CompareByValue(b, filter.GT, value))
 }
 
 func (b *BaseField[T]) GtField(f filter.BaseFilterField[T]) filter.Filter {
 	return filter.CompareByValue(b, filter.GT, f)
 }
 
-func (b *BaseField[T]) Lt(value T) filter.Filter {
-	return filter.CompareByValue(b, filter.LT, value)
+func (b *BaseField[T]) Lt(value T) filter.PartialIndexFilter {
+	return filter.AsPartialIndexFilter(filter.CompareByValue(b, filter.LT, value))
 }
 
 func (b *BaseField[T]) LtField(f filter.BaseFilterField[T]) filter.Filter {
 	return filter.CompareByValue(b, filter.LT, f)
 }
 
-func (b *BaseField[T]) Gte(value T) filter.Filter {
-	return filter.CompareByValue(b, filter.GTE, value)
+func (b *BaseField[T]) Gte(value T) filter.PartialIndexFilter {
+	return filter.AsPartialIndexFilter(filter.CompareByValue(b, filter.GTE, value))
 }
 
 func (b *BaseField[T]) GteField(f filter.BaseFilterField[T]) filter.Filter {
 	return filter.CompareByValue(b, filter.GTE, f)
 }
 
-func (b *BaseField[T]) Lte(value T) filter.Filter {
-	return filter.CompareByValue(b, filter.LTE, value)
+func (b *BaseField[T]) Lte(value T) filter.PartialIndexFilter {
+	return filter.AsPartialIndexFilter(filter.CompareByValue(b, filter.LTE, value))
 }
 
 func (b *BaseField[T]) LteField(f filter.BaseFilterField[T]) filter.Filter {
@@ -111,8 +111,8 @@ func (b *BaseField[T]) DescIndex() index.Key {
 	return index.NewKey(b, -1)
 }
 
-func (b *BaseField[T]) Eq(value T) filter.Filter {
-	return filter.CompareByValue(b, filter.EQ, value)
+func (b *BaseField[T]) Eq(value T) filter.PartialIndexFilter {
+	return filter.AsPartialIndexFilter(filter.CompareByValue(b, filter.EQ, value))
 }
 
 func (b *BaseField[T]) EqField(f filter.ComparableFilterField[T]) filter.Filter {
@@ -127,8 +127,8 @@ func (b *BaseField[T]) NeField(f filter.ComparableFilterField[T]) filter.Filter 
 	return filter.CompareByField(b, filter.NE, f)
 }
 
-func (b *BaseField[T]) In(values []T) filter.Filter {
-	return filter.New(b, "$in", values)
+func (b *BaseField[T]) In(values []T) filter.PartialIndexFilter {
+	return filter.AsPartialIndexFilter(filter.New(b, "$in", values))
 }
 
 func (b *BaseField[T]) Nin(values []T) filter.Filter {
