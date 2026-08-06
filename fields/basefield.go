@@ -104,11 +104,11 @@ func (b *BaseField[T]) Mul(num T) updater.Updater {
 }
 
 func (b *BaseField[T]) AscIndex() index.Key {
-	return index.NewKey(b, 1)
+	return index.NewKey(b, index.KeyTypeAscendingOrder)
 }
 
 func (b *BaseField[T]) DescIndex() index.Key {
-	return index.NewKey(b, -1)
+	return index.NewKey(b, index.KeyTypeDescendingOrder)
 }
 
 func (b *BaseField[T]) Eq(value T) filter.PartialIndexFilter {
