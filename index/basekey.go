@@ -1,6 +1,6 @@
 package index
 
 type BaseKey interface {
-	AscIndex() Key
-	DescIndex() Key
+	AscIndex(opts ...Option) Key
+	DescIndex(opts ...Option) Key
 }

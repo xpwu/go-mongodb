@@ -1,28 +1,30 @@
 package index
 
 import (
+	"errors"
 	"github.com/xpwu/go-mongodb/field"
-	"github.com/xpwu/go-mongodb/filter"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type Key interface {
 	ToBsonD() bson.D
-	Options() bson.D
+	Options() (ret bson.D, err error)
 }
 
 type base struct {
 	f     field.Field
 	value interface{}
+	opts  options
 }
 
 func (b *base) ToBsonD() bson.D {
 	return bson.D{{b.f.FullName(), b.value}}
 }
 
-func (b *base) Options() bson.D {
-	// todo
-	return bson.D{}
+var ErrOptions = errors.New("only one of Partial or Sparse may be set")
+
+func (b *base) Options() (ret bson.D, err error) {
+	return b.opts.ToBsonD()
 }
 
 type KeyType = interface{}
@@ -35,19 +37,24 @@ const (
 	KeyType2dSphere        = "2dsphere"
 )
 
-// NewKey keyType 常用： 1 升序；-1 降序；"2dsphere"; "2d"; "text"。具体可以查阅mongodb文档
-func NewKey(f field.Field, keyType KeyType) Key {
-	return &base{
+func NewKey(f field.Field, keyType KeyType, opts ...Option) Key {
+	ret := &base{
 		f:     f,
 		value: keyType,
 	}
+	for _, o := range opts {
+		o(&ret.opts)
+	}
+
+	return ret
 }
 
-type compound struct {
+type compKey struct {
 	keys []Key
+	opts options
 }
 
-func (c *compound) ToBsonD() bson.D {
+func (c *compKey) ToBsonD() bson.D {
 	if c == nil || len(c.keys) == 0 {
 		return bson.D{}
 	}
@@ -61,47 +68,16 @@ func (c *compound) ToBsonD() bson.D {
 	return ret
 }
 
-func (c *compound) Options() bson.D {
-	// todo
-	return bson.D{}
+func (c *compKey) Options() (ret bson.D, err error) {
+	return c.opts.ToBsonD()
 }
 
-func CompKeys(k1 Key, keys ...Key) Key {
-	r := make([]Key, 0, 1+len(keys))
-	r = append(r, k1)
-	return &compound{keys: append(r, keys...)}
-}
+func CompKeys(keys []Key, opts ...Option) Key {
+	ret := &compKey{keys: keys}
 
-type options struct {
-	partialFilterExpression filter.PartialIndexFilter
-	unique                  *bool
-	sparse                  *bool
-}
-
-type Option func(opt *options)
-
-// Partial sets a partial index filter.
-// Only one of Partial or Sparse may be set; setting both will cause
-// index creation to fail.
-func Partial(p filter.PartialIndexFilter) Option {
-	return func(opt *options) {
-		opt.partialFilterExpression = p
+	for _, o := range opts {
+		o(&ret.opts)
 	}
-}
 
-// Sparse enables the sparse property for the index.
-// Only one of Partial or Sparse may be set; setting both will cause
-// index creation to fail.
-func Sparse() Option {
-	return func(opt *options) {
-		s := true
-		opt.sparse = &s
-	}
-}
-
-func Unique() Option {
-	return func(opt *options) {
-		s := true
-		opt.unique = &s
-	}
+	return ret
 }
