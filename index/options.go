@@ -9,6 +9,7 @@ type options struct {
 	partialFilterExpression filter.PartialIndexFilter
 	unique                  bool
 	sparse                  bool
+	name                    string
 }
 
 func (opts *options) ToBsonD() (r bson.D, err error) {
@@ -27,6 +28,9 @@ func (opts *options) ToBsonD() (r bson.D, err error) {
 	}
 	if opts.sparse {
 		ret = append(ret, bson.E{Key: "sparse", Value: true})
+	}
+	if opts.name != "" {
+		ret = append(ret, bson.E{Key: "name", Value: opts.name})
 	}
 
 	return ret, nil
@@ -55,5 +59,11 @@ func Sparse() Option {
 func Unique() Option {
 	return func(opt *options) {
 		opt.unique = true
+	}
+}
+
+func Name(n string) Option {
+	return func(opt *options) {
+		opt.name = n
 	}
 }
