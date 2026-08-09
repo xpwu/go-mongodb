@@ -103,12 +103,12 @@ func (b *BaseField[T]) Mul(num T) updater.Updater {
 	return updater.New(b, "$mul", num)
 }
 
-func (b *BaseField[T]) AscIndex() index.Key {
-	return index.NewKey(b, index.KeyTypeAscendingOrder)
+func (b *BaseField[T]) AscIndex(opts ...index.Option) index.Key {
+	return index.NewKey(b, index.KeyTypeAscendingOrder, opts...)
 }
 
-func (b *BaseField[T]) DescIndex() index.Key {
-	return index.NewKey(b, index.KeyTypeDescendingOrder)
+func (b *BaseField[T]) DescIndex(opts ...index.Option) index.Key {
+	return index.NewKey(b, index.KeyTypeDescendingOrder, opts...)
 }
 
 func (b *BaseField[T]) Eq(value T) filter.PartialIndexFilter {

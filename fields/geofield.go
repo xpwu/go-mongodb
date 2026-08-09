@@ -58,8 +58,8 @@ func (vk *versionKey) ToBsonD() bson.D {
 	return bson.D{{vk.fieldName, index.KeyType2dSphere}}
 }
 
-func (vk *versionKey) Options() bson.D {
-	return bson.D{{"2dsphereIndexVersion", vk.version}}
+func (vk *versionKey) Options() (ret bson.D, err error) {
+	return bson.D{{"2dsphereIndexVersion", vk.version}}, nil
 }
 
 func (p *spherePointField) Index2DWith(version int) index.Key {
@@ -185,8 +185,8 @@ func (vk *precisionKey) ToBsonD() bson.D {
 	return bson.D{{vk.fieldName, index.KeyType2d}}
 }
 
-func (vk *precisionKey) Options() bson.D {
-	return bson.D{{"bits", vk.precision}}
+func (vk *precisionKey) Options() (ret bson.D, err error) {
+	return bson.D{{"bits", vk.precision}}, nil
 }
 
 func (f *flatPointField) Index2DWith(precision int) index.Key {
@@ -206,8 +206,8 @@ func (vk *rangeKey) ToBsonD() bson.D {
 	return bson.D{{vk.fieldName, index.KeyType2d}}
 }
 
-func (vk *rangeKey) Options() bson.D {
-	return bson.D{{"min", vk.min}, {"max", vk.max}}
+func (vk *rangeKey) Options() (ret bson.D, err error) {
+	return bson.D{{"min", vk.min}, {"max", vk.max}}, nil
 }
 
 func (f *flatPointField) Index2DWithRange(min, max float32) index.Key {
