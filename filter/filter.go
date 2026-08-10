@@ -8,7 +8,7 @@ import (
 )
 
 type Filter interface {
-	ToBsonD() *bson.D
+	ToBsonD() bson.D
 }
 
 type Comparer byte
@@ -41,13 +41,13 @@ func (b *base) not() *base {
 	}
 }
 
-func (b *base) ToBsonD() *bson.D {
+func (b *base) ToBsonD() bson.D {
 	name := b.f.FullName()
 	if name == "" {
-		return &bson.D{{b.operator, b.value}}
+		return bson.D{{b.operator, b.value}}
 	}
 
-	return &bson.D{{name, bson.D{{b.operator, b.value}}}}
+	return bson.D{{name, bson.D{{b.operator, b.value}}}}
 }
 
 func New(f field.Field, operator string, value interface{}) Filter {
@@ -96,8 +96,8 @@ type exprFilter struct {
 	f2       field.Field
 }
 
-func (e *exprFilter) ToBsonD() *bson.D {
-	return &bson.D{{"$expr", bson.D{{e.operator,
+func (e *exprFilter) ToBsonD() bson.D {
+	return bson.D{{"$expr", bson.D{{e.operator,
 		[]string{e.f1.FullName(), e.f2.FullName()}}}}}
 }
 
