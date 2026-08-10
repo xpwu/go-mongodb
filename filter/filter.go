@@ -58,6 +58,16 @@ func New(f field.Field, operator string, value interface{}) Filter {
 	}
 }
 
+type bsonD bson.D
+
+func (b bsonD) ToBsonD() bson.D {
+	return bson.D(b)
+}
+
+func FromBsonD(d bson.D) Filter {
+	return bsonD(d)
+}
+
 func Exist(f field.Field) PartialIndexFilter {
 	return AsPartialIndexFilter(&base{
 		f:        f,

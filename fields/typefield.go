@@ -11,7 +11,7 @@ import (
 
 type Integer interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64 |
-		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
+	~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
 }
 
 type IntegerFilter[T Integer] interface {
@@ -104,7 +104,7 @@ type stringField struct {
 }
 
 func (s *stringField) Regex(regex bson.Regex) filter.Filter {
-	return filter.New(s, "$regex", regex)
+	return filter.FromBsonD(bson.D{{s.FullName(), regex}})
 }
 
 func NewStringField(name string) StringField {

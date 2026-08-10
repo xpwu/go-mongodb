@@ -128,11 +128,19 @@ func (b *BaseField[T]) NeField(f filter.ComparableFilterField[T]) filter.Filter 
 }
 
 func (b *BaseField[T]) In(values []T) filter.PartialIndexFilter {
-	return filter.AsPartialIndexFilter(filter.New(b, "$in", values))
+	val := make(bson.A, 0, len(values))
+	for _, v := range values {
+		val = append(val, v)
+	}
+	return filter.AsPartialIndexFilter(filter.New(b, "$in", val))
 }
 
 func (b *BaseField[T]) Nin(values []T) filter.Filter {
-	return filter.New(b, "$nin", values)
+	val := make(bson.A, 0, len(values))
+	for _, v := range values {
+		val = append(val, v)
+	}
+	return filter.New(b, "$nin", val)
 }
 
 var (
