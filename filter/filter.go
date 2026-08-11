@@ -143,28 +143,6 @@ func Not(filter Filter) Filter {
 	panic(fmt.Sprintf("%s has not `not` method ", reflect.TypeOf(filter).Elem().Name()))
 }
 
-func Or(filter1, filter2 Filter, filters ...Filter) Filter {
-	return newLogic(`$or`, filter1, filter2, filters...)
-}
-
-func OrPartial(filter1, filter2 PartialIndexFilter, filters ...PartialIndexFilter) PartialIndexFilter {
-	fil := make([]Filter, len(filters))
-	for i, a := range filters {
-		fil[i] = a
-	}
-	return AsPartialIndexFilter(newLogic(`$or`, filter1, filter2, fil...))
-}
-
-// Nor selects the documents that fail all the query predicates in the array,
-// including those documents that do not contain these field(s).
-//
-// NOTE THAT: The exception in returning documents that do not contain the field in the $nor expression
-// is when the $nor operator is used with the $exists operator.
-// https://www.mongodb.com/docs/manual/reference/operator/query/nor/#-nor-and--exists
-func Nor(filter1, filter2 Filter, filters ...Filter) Filter {
-	return newNor(filter1, filter2, filters...)
-}
-
 type PartialIndexFilter interface {
 	Filter
 	partialAble()

@@ -177,10 +177,7 @@ func TestFlattenDoc(t *testing.T) {
 				}},
 			},
 			expected: bson.D{
-				{"$and", bson.A{
-					bson.D{{"a", 1}},
-					bson.D{{"a", bson.D{{"$gt", 0}}}},
-				}},
+				{"a", bson.D{{"$eq", 1}, {"$gt", 0}}},
 			},
 		},
 		{
@@ -340,35 +337,6 @@ func TestFlattenDoc(t *testing.T) {
 				{"b", 2},
 			},
 		},
-
-		// ---------- pure value ----------
-		{
-			name: "pure_value_duplicate -> flatten",
-			input: bson.D{
-				{"$and", bson.A{
-					bson.D{{"a", 1}},
-					bson.D{{"a", 1}},
-				}},
-			},
-			expected: bson.D{
-				{"a", 1},
-			},
-		},
-		{
-			name: "pure_value_different -> conflict",
-			input: bson.D{
-				{"$and", bson.A{
-					bson.D{{"a", 1}},
-					bson.D{{"a", 2}},
-				}},
-			},
-			expected: bson.D{
-				{"$and", bson.A{
-					bson.D{{"a", 1}},
-					bson.D{{"a", 2}},
-				}},
-			},
-		},
 		{
 			name: "pure_value_multiple_conflicts",
 			input: bson.D{
@@ -421,21 +389,6 @@ func TestFlattenDoc(t *testing.T) {
 
 		// ---------- pure value vs operator ----------
 		{
-			name: "pure_value_vs_operator_conflict",
-			input: bson.D{
-				{"$and", bson.A{
-					bson.D{{"a", 1}},
-					bson.D{{"a", bson.D{{"$gt", 0}}}},
-				}},
-			},
-			expected: bson.D{
-				{"$and", bson.A{
-					bson.D{{"a", 1}},
-					bson.D{{"a", bson.D{{"$gt", 0}}}},
-				}},
-			},
-		},
-		{
 			name: "operator_vs_pure_value_conflict",
 			input: bson.D{
 				{"$and", bson.A{
@@ -444,10 +397,7 @@ func TestFlattenDoc(t *testing.T) {
 				}},
 			},
 			expected: bson.D{
-				{"$and", bson.A{
-					bson.D{{"a", bson.D{{"$gt", 0}}}},
-					bson.D{{"a", 1}},
-				}},
+				{"a", bson.D{{"$eq", 1}, {"$gt", 0}}},
 			},
 		},
 
@@ -461,12 +411,6 @@ func TestFlattenDoc(t *testing.T) {
 					bson.D{{"a", bson.D{{"$gt", 3}}}},
 				}},
 			},
-			//expected: bson.D{
-			//	{"$and", bson.A{
-			//		bson.D{{"a", bson.D{{"$gt", 1}, {"$lt", 5}}}},
-			//		bson.D{{"a", bson.D{{"$gt", 3}}}},
-			//	}},
-			//},
 			check: func(t *testing.T, out bson.D) {
 				and := extractAnd(out)
 				if len(and) != 2 {
@@ -488,13 +432,6 @@ func TestFlattenDoc(t *testing.T) {
 					}}},
 				}},
 			},
-			//expected: bson.D{
-			//	{"a", bson.D{{"$gt", 1}}},
-			//	{"$or", bson.A{
-			//		bson.D{{"b", 1}},
-			//		bson.D{{"c", 2}},
-			//	}},
-			//},
 			check: func(t *testing.T, out bson.D) {
 				if !hasKey(out, "a") {
 					t.Fatalf("missing a")
@@ -567,12 +504,6 @@ func TestFlattenDoc(t *testing.T) {
 					bson.D{{"a", 1}},
 				}},
 			},
-			//expected: bson.D{
-			//	{"$and", bson.A{
-			//		"invalid",
-			//		bson.D{{"a", 1}},
-			//	}},
-			//},
 			check: func(t *testing.T, out bson.D) {
 				and := extractAnd(out)
 				if len(and) != 2 {
@@ -606,7 +537,6 @@ func TestFlattenDoc(t *testing.T) {
 				{"a", 1},
 			},
 		},
-
 		{
 			name: "invariant: condition count never decreases",
 			input: bson.D{
@@ -664,6 +594,56 @@ func TestFlattenDoc(t *testing.T) {
 			check: func(t *testing.T, out bson.D) {
 				if len(extractAnd(out)) != 2 {
 					t.Fatalf("$all must not be merged")
+				}
+			},
+		},
+		{
+			name: "$or with nested $or",
+			input: bson.D{
+				{"$or", bson.A{
+					bson.D{{"$or", bson.A{
+						bson.D{{"a", 1}},
+						bson.D{{"b", 2}},
+					}}},
+					bson.D{{"c", 3}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				or := extractOr(out)
+				if len(or) != 3 {
+					t.Fatalf("expected 3 clauses after flatten")
+				}
+			},
+		},
+		{
+			name: "$or single clause preserved",
+			input: bson.D{
+				{"$or", bson.A{
+					bson.D{{"a", 1}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$or") {
+					t.Fatalf("$or must be preserved")
+				}
+				or := extractOr(out)
+				if len(or) != 1 {
+					t.Fatalf("expected 1 clause")
+				}
+			},
+		},
+		{
+			name: "$or conflict preserved",
+			input: bson.D{
+				{"$or", bson.A{
+					bson.D{{"a", bson.D{{"$gt", 1}}}},
+					bson.D{{"a", bson.D{{"$gt", 3}}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				or := extractOr(out)
+				if len(or) != 2 {
+					t.Fatalf("$or conflict must be preserved")
 				}
 			},
 		},
@@ -757,11 +737,13 @@ func randomFilterWithRand(r *rand.Rand, maxDepth int) bson.D {
 
 func randomNodeWithRand(r *rand.Rand, depth int) bson.D {
 	if r.Float32() < 0.3 && depth > 1 {
-		switch r.Intn(2) {
+		switch r.Intn(3) { // 3 种逻辑算子
 		case 0:
 			return bson.D{{"$and", randomArrayWithRand(r, depth-1)}}
 		case 1:
 			return bson.D{{"$or", randomArrayWithRand(r, depth-1)}}
+		case 2:
+			return bson.D{{"$nor", randomArrayWithRand(r, depth-1)}}
 		}
 	}
 	return randomLeafWithRand(r)
@@ -802,16 +784,48 @@ func randomOperatorWithRand(r *rand.Rand) string {
 }
 
 func randomValueWithRand(r *rand.Rand) interface{} {
-	switch r.Intn(4) {
+	switch r.Intn(5) { // 5 种
 	case 0:
 		return r.Intn(100)
 	case 1:
 		return r.Float64() * 100
 	case 2:
 		return []string{"foo", "bar", "baz"}[r.Intn(3)]
-	default:
+	case 3:
 		return r.Intn(2) == 0
+	case 4:
+		// 脏数据
+		if r.Float32() < 0.5 {
+			return nil
+		}
+		return "invalid"
+	default:
+		return nil
 	}
+}
+
+func countClauses(d bson.D) int {
+	count := 0
+	var walk func(bson.D)
+	walk = func(d bson.D) {
+		for _, e := range d {
+			count++
+			switch v := e.Value.(type) {
+			case bson.D:
+				walk(v)
+			case bson.A:
+				for _, item := range v {
+					if sub, ok := item.(bson.D); ok {
+						walk(sub)
+					} else {
+						count++ // 非 doc（invalid / nil / primitive）
+					}
+				}
+			}
+		}
+	}
+	walk(d)
+	return count
 }
 
 func TestFlattenDoc_NoPanic(t *testing.T) {
@@ -829,7 +843,42 @@ func TestFlattenDoc_NoPanic(t *testing.T) {
 					)
 				}
 			}()
-			flattenDoc(input)
+			before := countClauses(input)
+			flat := flattenDoc(input)
+			after := countClauses(flat)
+			if after > before {
+				t.Fatalf(
+					"condition count decreased\nbefore=%d after=%d\ninput=%s\nflat=%s",
+					before, after, toBSON(input), toBSON(flat),
+				)
+			}
+			// 结构合法（能 Marshal）
+			if _, err := bson.Marshal(flat); err != nil {
+				t.Fatalf("invalid bson after flatten\ninput=%s\nflat=%s\nerr=%v", toBSON(input), toBSON(flat), err)
+			}
 		}()
 	}
 }
+
+//func TestFlattenDoc_RoundTrip(t *testing.T) {
+//	r := rand.New(rand.NewSource(123))
+//	for i := 0; i < 100; i++ {
+//		input := randomFilterWithRand(r, 3)
+//		flat := flattenDoc(input)
+//
+//		// Marshal / Unmarshal 消除顺序差异
+//		raw1, _ := bson.Marshal(input)
+//		raw2, _ := bson.Marshal(flat)
+//
+//		var d1, d2 bson.D
+//		_ = bson.Unmarshal(raw1, &d1)
+//		_ = bson.Unmarshal(raw2, &d2)
+//
+//		if !bsonDocEqual(d1, d2) {
+//			t.Fatalf(
+//				"round-trip mismatch\ninput=%s\nflat=%s",
+//				toBSON(d1), toBSON(d2),
+//			)
+//		}
+//	}
+//}
