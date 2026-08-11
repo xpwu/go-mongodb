@@ -143,20 +143,8 @@ func Not(filter Filter) Filter {
 	panic(fmt.Sprintf("%s has not `not` method ", reflect.TypeOf(filter).Elem().Name()))
 }
 
-func And(filter1, filter2 Filter, filters ...Filter) Filter {
-	return newLogic(and, filter1, filter2, filters...)
-}
-
-func AndPartial(filter1, filter2 PartialIndexFilter, filters ...PartialIndexFilter) PartialIndexFilter {
-	fil := make([]Filter, len(filters))
-	for i, a := range filters {
-		fil[i] = a
-	}
-	return AsPartialIndexFilter(newLogic(and, filter1, filter2, fil...))
-}
-
 func Or(filter1, filter2 Filter, filters ...Filter) Filter {
-	return newLogic(or, filter1, filter2, filters...)
+	return newLogic(`$or`, filter1, filter2, filters...)
 }
 
 func OrPartial(filter1, filter2 PartialIndexFilter, filters ...PartialIndexFilter) PartialIndexFilter {
@@ -164,7 +152,7 @@ func OrPartial(filter1, filter2 PartialIndexFilter, filters ...PartialIndexFilte
 	for i, a := range filters {
 		fil[i] = a
 	}
-	return AsPartialIndexFilter(newLogic(or, filter1, filter2, fil...))
+	return AsPartialIndexFilter(newLogic(`$or`, filter1, filter2, fil...))
 }
 
 // Nor selects the documents that fail all the query predicates in the array,
