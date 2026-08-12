@@ -43,7 +43,7 @@ func flattenDoc(docs bson.D) bson.D {
 	return docs
 }
 
-func exactAnd(elem bson.E) (ret []bson.E, ok bool) {
+func extractAndToEs(elem bson.E) (ret []bson.E, ok bool) {
 	if elem.Key != "$and" {
 		return nil, false
 	}
@@ -88,7 +88,7 @@ func flattenAnd(arr bson.A) bson.D {
 				sub := flattenAnd(e.Value.(bson.A))
 				for _, elem := range sub {
 					if elem.Key == "$and" {
-						if es, ok := exactAnd(elem); ok {
+						if es, ok := extractAndToEs(elem); ok {
 							docs = append(docs, es...)
 						} else {
 							keeps = append(keeps, bson.D{elem})
@@ -501,7 +501,7 @@ func Nor(filters ...Filter) Filter {
 	return &nor{filters: filters}
 }
 
-func flattenNot(inner bson.D) bson.D {
+func runNot(inner bson.D) bson.D {
 	if len(inner) == 0 {
 		return bson.D{{"$not", bson.D{}}}
 	}
@@ -524,7 +524,7 @@ func flattenNot(inner bson.D) bson.D {
 			var clauses []bson.D
 			for _, item := range arr {
 				if d, ok := item.(bson.D); ok {
-					clauses = append(clauses, flattenNot(d))
+					clauses = append(clauses, runNot(d))
 				} else {
 					clauses = append(clauses, bson.D{{"$not", item}})
 				}
@@ -538,7 +538,7 @@ func flattenNot(inner bson.D) bson.D {
 			var clauses []bson.D
 			for _, item := range arr {
 				if d, ok := item.(bson.D); ok {
-					clauses = append(clauses, flattenNot(d))
+					clauses = append(clauses, runNot(d))
 				} else {
 					clauses = append(clauses, bson.D{{"$not", item}})
 				}
@@ -569,7 +569,7 @@ func flattenNot(inner bson.D) bson.D {
 		for _, dn := range d {
 			clauses = append(clauses, bson.D{{key, bson.D{dn}}})
 		}
-		return flattenNot(bson.D{{"$and", toBsonA(clauses)}})
+		return runNot(bson.D{{"$and", toBsonA(clauses)}})
 	}
 
 	// 普通字段：{field: bson.Regex{}}
@@ -626,7 +626,7 @@ type not struct {
 }
 
 func (n *not) ToBsonD() bson.D {
-	return flattenNot(n.filter.ToBsonD())
+	return runNot(n.filter.ToBsonD())
 }
 
 // Not returns a Filter that negates the given filter.
