@@ -1,10 +1,8 @@
 package filter
 
 import (
-	"fmt"
 	"github.com/xpwu/go-mongodb/field"
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"reflect"
 )
 
 type Filter interface {
@@ -130,20 +128,6 @@ func SameElemMatch(f field.Field, filter Filter) Filter {
 		operator: `$elemMatch`,
 		value:    filter.ToBsonD(),
 	}
-}
-
-// Not selects the documents
-//
-// 1. that do not match the <operator-expression>.
-//
-// 2.This includes documents that do not contain the field
-// https://www.mongodb.com/docs/manual/reference/operator/query/not/#mongodb-query-op.-not
-func Not(filter Filter) Filter {
-	if b, ok := filter.(*base); ok {
-		return b.not()
-	}
-
-	panic(fmt.Sprintf("%s has not `not` method ", reflect.TypeOf(filter).Elem().Name()))
 }
 
 type PartialIndexFilter interface {

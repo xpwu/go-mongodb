@@ -3,6 +3,7 @@ package filter
 import (
 	"bytes"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"strings"
 )
 
 // filter: <field>: { <operator>: <value> }
@@ -76,7 +77,7 @@ func flattenAnd(arr bson.A) bson.D {
 				}
 				continue
 			}
-			if e.Key == "$not" {
+			if e.Key == "$nor" {
 				norResult := flattenNor(e.Value.(bson.A))
 				if len(norResult) == 1 {
 					docs = append(docs, norResult[0])
@@ -460,4 +461,129 @@ func (l *nor) ToBsonD() bson.D {
 // https://www.mongodb.com/docs/manual/reference/operator/query/nor/#-nor-and--exists
 func Nor(filter1, filter2 Filter, filters ...Filter) Filter {
 	return &nor{filters: filters}
+}
+
+func flattenNot(inner bson.D) bson.D {
+	if len(inner) == 0 {
+		return bson.D{{"$not", bson.D{}}}
+	}
+
+	// 隐式 $and（多字段）
+	if len(inner) != 1 {
+		// Not({a:1, b:{$gt:2}}) => {$nor: [{a:1, b:{$gt:2}}]}
+		return flattenNor(bson.A{inner})
+	}
+
+	key := inner[0].Key
+	val := inner[0].Value
+
+	// 已经是 $not，双重否定消除：Not(Not(f)) => f
+	if key == "$not" {
+		if d, ok := val.(bson.D); ok {
+			return flattenDoc(d)
+		}
+		return bson.D{{"$not", inner}}
+	}
+
+	if arr, ok := val.(bson.A); ok {
+		switch key {
+		case "$and":
+			// Not($and:[f1, f2])
+			// 德摩根：¬(f1 ∧ f2) = ¬f1 ∨ ¬f2
+			// => {$or: [{field1: {$not: f1_val}}, {field2: {$not: f2_val}}]}
+			var clauses []bson.D
+			for _, item := range arr {
+				if d, ok := item.(bson.D); ok {
+					clauses = append(clauses, flattenNot(d))
+				} else {
+					clauses = append(clauses, bson.D{{"$not", item}})
+				}
+			}
+			return flattenOr(toBsonA(clauses))
+
+		case "$or":
+			// Not($or:[f1, f2])
+			// 德摩根：¬(f1 ∨ f2) = ¬f1 ∧ ¬f2
+			// => {$and: [{field1: {$not: f1_val}}, {field2: {$not: f2_val}}]}
+			var clauses []bson.D
+			for _, item := range arr {
+				if d, ok := item.(bson.D); ok {
+					clauses = append(clauses, flattenNot(d))
+				} else {
+					clauses = append(clauses, bson.D{{"$not", item}})
+				}
+			}
+			return flattenAnd(toBsonA(clauses))
+
+		case "$nor":
+			// Not($nor:[f1, f2])
+			// $nor = ¬f1 ∧ ¬f2，所以 ¬(¬f1 ∧ ¬f2) = f1 ∨ f2
+			// => {$or: [f1, f2]}
+			return flattenOr(arr)
+
+			// falling through: val.(bson.A) but key is else
+		}
+	}
+
+	// $op  {$gt: 5} => {$not: {$gt: 5}}
+	if strings.HasPrefix(key, "$") {
+		return bson.D{{"$not", inner}}
+	}
+
+	// 普通字段：{field: {$not: condition}}
+	// 例如 Not(Gt("a", 5)) => {a: {$not: {$gt: 5}}}
+	if d, ok := val.(bson.D); ok {
+		return bson.D{{key, flattenNot(d)}}
+	}
+
+	// 普通字段：{field: bson.Regex{}}
+	// 例如 Not({field: bson.Regex{}}) => {a: {$not: {$regex: bson.Regex{}}}}
+	if r, ok := val.(bson.Regex); ok {
+		return bson.D{{key, bson.D{{"$not", bson.D{{"$regex", r}}}}}}
+	}
+
+	// 普通字段：{field: value} or {field: []values}
+	// Not({field: value}) => {field: {$not: {"$eq": value}}}
+	return bson.D{{key, bson.D{{"$not", bson.D{{"$eq", val}}}}}}
+}
+
+type not struct {
+	filter Filter
+}
+
+func (n *not) ToBsonD() bson.D {
+	return flattenNot(n.filter.ToBsonD())
+}
+
+// Not returns a Filter that negates the given filter.
+//
+// 1. that do not match the <operator-expression>.
+//
+// 2.This includes documents that do not contain the field
+//
+// https://www.mongodb.com/docs/manual/reference/operator/query/not/#mongodb-query-op.-not
+//
+// Conversion rules (De Morgan's laws):
+//   - Not(single field condition)  => {field: {$not: condition}}
+//     e.g. Not(Gt("a", 5))         => {a: {$not: {$gt: 5}}}
+//
+//   - Not(And(f1, f2))             => {$or: [{f1_field: {$not: f1_val}}, {f2_field: {$not: f2_val}}]}
+//     ¬(f1 ∧ f2) = ¬f1 ∨ ¬f2
+//
+//   - Not(Or(f1, f2))              => {$and: [{f1_field: {$not: f1_val}}, {f2_field: {$not: f2_val}}]}
+//     ¬(f1 ∨ f2) = ¬f1 ∧ ¬f2
+//
+//   - Not(Nor(f1, f2))             => {$or: [f1, f2]}
+//     ¬(¬f1 ∧ ¬f2) = f1 ∨ f2
+//
+//   - Not(Not(f))                  => f (double negation elimination)
+//
+//   - Not(implicit $and)           => {$nor: [implicit_and_doc]}
+//     e.g. Not(Filter{a:1, b:{$gt:2}}) => {$nor: [{a:1, b:{$gt:2}}]}
+//
+// IMPORTANT: $not is a field-level operator and must always be placed inside
+// the field's value. It must never wrap a logical operator ($and/$or/$nor)
+// because MongoDB does not support {$not: {$or: [...]}}.
+func Not(filter Filter) Filter {
+	return &not{filter: filter}
 }
