@@ -3,6 +3,7 @@ package filter
 import (
 	"bytes"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"strings"
 )
 
 // filter: <field>: { <operator>: <value> }
@@ -42,6 +43,27 @@ func flattenDoc(docs bson.D) bson.D {
 	return docs
 }
 
+func exactAnd(elem bson.E) (ret []bson.E, ok bool) {
+	if elem.Key != "$and" {
+		return nil, false
+	}
+	a, ok := elem.Value.(bson.A)
+	if !ok {
+		return nil, false
+	}
+	for _, a1 := range a {
+		d, ok := a1.(bson.D)
+		if !ok {
+			return nil, false
+		}
+		for _, e := range d {
+			ret = append(ret, e)
+		}
+	}
+
+	return ret, true
+}
+
 // flattenAnd   bson.A{bson.D{}}  ==> 1、bson.D{bson.E{field, value}, bson.E{"$or", bson.A{xxx}}, ...}; 2、bson.D{bson.E{"$and", bson.A{xxx}}}
 func flattenAnd(arr bson.A) bson.D {
 	if len(arr) == 0 {
@@ -65,16 +87,15 @@ func flattenAnd(arr bson.A) bson.D {
 			if e.Key == "$and" {
 				sub := flattenAnd(e.Value.(bson.A))
 				for _, elem := range sub {
-					// 返回的仍有 $and 关键字，说明内部不能再次合并，直接放 keeps 里面
 					if elem.Key == "$and" {
-						if a, ok := elem.Value.(bson.A); ok {
-							keeps = append(keeps, a...)
-							continue
+						if es, ok := exactAnd(elem); ok {
+							docs = append(docs, es...)
+						} else {
+							keeps = append(keeps, bson.D{elem})
 						}
-						// 格式不对的 $and, 理论上不存在此情况
-
+					} else {
+						docs = append(docs, elem)
 					}
-					docs = append(docs, elem)
 				}
 				continue
 			}
@@ -142,9 +163,11 @@ func flattenAnd(arr bson.A) bson.D {
 				break
 			}
 
-			// todo
-			if key == "$and" || key == "$or" || key == "$nor" {
-
+			// $or  $nor 等操作符 是不能合并的，否则不满足逻辑本身
+			// 为了 bson.A 尽可能的少，分散到不同的 fields
+			// 之所以没有直接加入 keeps，是因为如果只有一个 $or 或者 $nor 就省去了 $and
+			if strings.HasPrefix(key, "$") {
+				continue
 			}
 
 			if valField.kind == kPure && f.kind == kPure {

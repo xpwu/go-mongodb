@@ -953,6 +953,248 @@ func TestFlattenDoc(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "empty $or",
+			input: bson.D{
+				{"$or", bson.A{}},
+			},
+			expected: bson.D{
+				{"$or", bson.A{}},
+			},
+		},
+		{
+			name: "$or with $nor inside",
+			input: bson.D{
+				{"$or", bson.A{
+					bson.D{{"a", 1}},
+					bson.D{{"$nor", bson.A{
+						bson.D{{"b", 2}},
+						bson.D{{"c", 3}},
+					}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$or") {
+					t.Fatalf("missing $or")
+				}
+				or := extractOr(out)
+				if len(or) != 2 {
+					t.Fatalf("expected 2 clauses in $or, got %d", len(or))
+				}
+				// 第二个 clause 应该包含 $nor
+				secondClause, ok := or[1].(bson.D)
+				if !ok || !hasKey(secondClause, "$nor") {
+					t.Fatalf("second clause should contain $nor")
+				}
+			},
+		},
+		{
+			name: "$nor with $nor inside (triple negation)",
+			input: bson.D{
+				{"$nor", bson.A{
+					bson.D{{"a", 1}},
+					bson.D{{"$nor", bson.A{
+						bson.D{{"$nor", bson.A{
+							bson.D{{"b", 2}},
+						}}},
+					}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$nor") {
+					t.Fatalf("missing $nor")
+				}
+				nor := extractNor(out)
+				if len(nor) != 2 {
+					t.Fatalf("expected 2 clauses in $nor, got %d", len(nor))
+				}
+				// 第二个 clause 应该还是 $nor 包着 $nor
+				secondClause, ok := nor[1].(bson.D)
+				if !ok {
+					t.Fatalf("second clause should be bson.D")
+				}
+				// 深入检查
+				if len(secondClause) != 1 || secondClause[0].Key != "$nor" {
+					t.Fatalf("should be $nor")
+				}
+				innerNor := extractNor(secondClause)
+				if len(innerNor) != 1 {
+					t.Fatalf("inner $nor should have 1 clause")
+				}
+			},
+		},
+		{
+			name: "$and with both $or and $nor",
+			input: bson.D{
+				{"$and", bson.A{
+					bson.D{{"a", bson.D{{"$gt", 1}}}},
+					bson.D{{"$or", bson.A{
+						bson.D{{"b", 1}},
+						bson.D{{"c", 2}},
+					}}},
+					bson.D{{"$nor", bson.A{
+						bson.D{{"d", 3}},
+						bson.D{{"e", 4}},
+					}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "a") {
+					t.Fatalf("missing a")
+				}
+				if !hasKey(out, "$or") {
+					t.Fatalf("missing $or")
+				}
+				if !hasKey(out, "$nor") {
+					t.Fatalf("missing $nor")
+				}
+				or := extractOr(out)
+				if len(or) != 2 {
+					t.Fatalf("expected 2 clauses in $or, got %d", len(or))
+				}
+				nor := extractNor(out)
+				if len(nor) != 2 {
+					t.Fatalf("expected 2 clauses in $nor, got %d", len(nor))
+				}
+			},
+		},
+		{
+			name: "$or with nested $and flattened",
+			input: bson.D{
+				{"$or", bson.A{
+					bson.D{{"$and", bson.A{
+						bson.D{{"a", 1}},
+						bson.D{{"b", 2}},
+					}}},
+					bson.D{{"c", 3}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$or") {
+					t.Fatalf("missing $or")
+				}
+				or := extractOr(out)
+				if len(or) != 2 {
+					t.Fatalf("expected 2 clauses in $or, got %d", len(or))
+				}
+				// 第一个 clause 应该是 {a:1, b:2}（被 flattenAnd 合并过）
+				firstClause, ok := or[0].(bson.D)
+				if !ok {
+					t.Fatalf("first clause should be bson.D")
+				}
+				if len(firstClause) != 2 {
+					t.Fatalf("first clause should have 2 fields after flatten, got %d", len(firstClause))
+				}
+			},
+		},
+		{
+			name: "$nor with nested $and flattened",
+			input: bson.D{
+				{"$nor", bson.A{
+					bson.D{{"$and", bson.A{
+						bson.D{{"a", 1}},
+						bson.D{{"b", 2}},
+					}}},
+					bson.D{{"c", 3}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$nor") {
+					t.Fatalf("missing $nor")
+				}
+				nor := extractNor(out)
+				if len(nor) != 2 {
+					t.Fatalf("expected 2 clauses in $nor, got %d", len(nor))
+				}
+				// 第一个 clause 应该是 {a:1, b:2}
+				firstClause, ok := nor[0].(bson.D)
+				if !ok {
+					t.Fatalf("first clause should be bson.D")
+				}
+				if len(firstClause) != 2 {
+					t.Fatalf("first clause should have 2 fields after flatten, got %d", len(firstClause))
+				}
+			},
+		},
+		{
+			name: "implicit $and with $or and $nor mixed",
+			input: bson.D{
+				{"a", bson.D{{"$gt", 1}}},
+				{"$or", bson.A{
+					bson.D{{"b", 1}},
+					bson.D{{"c", 2}},
+				}},
+				{"$nor", bson.A{
+					bson.D{{"d", 3}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				// 隐式 $and 应该被展开
+				if hasKey(out, "$and") {
+					t.Fatalf("should not have $and")
+				}
+				if !hasKey(out, "a") {
+					t.Fatalf("missing a")
+				}
+				if !hasKey(out, "$or") {
+					t.Fatalf("missing $or")
+				}
+				if !hasKey(out, "$nor") {
+					t.Fatalf("missing $nor")
+				}
+			},
+		},
+		{
+			name: "same field $gte and $lte merged",
+			input: bson.D{
+				{"$and", bson.A{
+					bson.D{{"a", bson.D{{"$gte", 1}}}},
+					bson.D{{"a", bson.D{{"$lte", 10}}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$and") {
+					t.Fatalf("should not have $and")
+				}
+				val, ok := getField(out, "a")
+				if !ok {
+					t.Fatalf("missing a")
+				}
+				_, ok = val.(bson.D)
+				if !ok {
+					t.Fatalf("a value should be bson.D")
+				}
+				if !hasOperator(out, "a", "$gte") || !hasOperator(out, "a", "$lte") {
+					t.Fatalf("a should have both $gte and $lte")
+				}
+			},
+		},
+		{
+			name: "same field $ne and $gt conflict",
+			input: bson.D{
+				{"$and", bson.A{
+					bson.D{{"a", bson.D{{"$ne", 5}}}},
+					bson.D{{"a", bson.D{{"$gt", 0}}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				// $ne 和 $gt 不同操作符，应该合并
+				if hasKey(out, "$and") {
+					t.Fatalf("should not have $and")
+				}
+				val, ok := getField(out, "a")
+				if !ok {
+					t.Fatalf("missing a")
+				}
+				_, ok = val.(bson.D)
+				if !ok {
+					t.Fatalf("a value should be bson.D")
+				}
+				if !hasOperator(out, "a", "$ne") || !hasOperator(out, "a", "$gt") {
+					t.Fatalf("a should have both $ne and $gt")
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1176,26 +1418,3 @@ func TestFlattenDoc_NoPanic(t *testing.T) {
 		}()
 	}
 }
-
-//func TestFlattenDoc_RoundTrip(t *testing.T) {
-//	r := rand.New(rand.NewSource(123))
-//	for i := 0; i < 100; i++ {
-//		input := randomFilterWithRand(r, 3)
-//		flat := flattenDoc(input)
-//
-//		// Marshal / Unmarshal 消除顺序差异
-//		raw1, _ := bson.Marshal(input)
-//		raw2, _ := bson.Marshal(flat)
-//
-//		var d1, d2 bson.D
-//		_ = bson.Unmarshal(raw1, &d1)
-//		_ = bson.Unmarshal(raw2, &d2)
-//
-//		if !bsonDocEqual(d1, d2) {
-//			t.Fatalf(
-//				"round-trip mismatch\ninput=%s\nflat=%s",
-//				toBSON(d1), toBSON(d2),
-//			)
-//		}
-//	}
-//}
