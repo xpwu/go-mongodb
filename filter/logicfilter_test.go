@@ -1418,3 +1418,282 @@ func TestFlattenDoc_NoPanic(t *testing.T) {
 		}()
 	}
 }
+
+func TestRunNot(t *testing.T) {
+	tests := []struct {
+		name  string
+		input bson.D
+		check func(t *testing.T, out bson.D)
+	}{
+		{
+			name:  "Not_single_field_eq_replaced_with_ne",
+			input: bson.D{{"a", bson.D{{"$eq", 5}}}},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$not") {
+					t.Fatalf("should not have $not")
+				}
+				if !hasOperator(out, "a", "$ne") {
+					t.Fatalf("expected a.$ne, got %#v", out)
+				}
+			},
+		},
+		{
+			name:  "Not_single_field_ne_replaced_with_eq",
+			input: bson.D{{"a", bson.D{{"$ne", 5}}}},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$not") {
+					t.Fatalf("should not have $not")
+				}
+				if !hasOperator(out, "a", "$eq") {
+					t.Fatalf("expected a.$eq, got %#v", out)
+				}
+			},
+		},
+		{
+			name:  "Not_single_field_in_replaced_with_nin",
+			input: bson.D{{"a", bson.D{{"$in", bson.A{1, 2, 3}}}}},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$not") {
+					t.Fatalf("should not have $not")
+				}
+				if !hasOperator(out, "a", "$nin") {
+					t.Fatalf("expected a.$nin, got %#v", out)
+				}
+			},
+		},
+		{
+			name:  "Not_single_field_nin_replaced_with_in",
+			input: bson.D{{"a", bson.D{{"$nin", bson.A{1, 2, 3}}}}},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$not") {
+					t.Fatalf("should not have $not")
+				}
+				if !hasOperator(out, "a", "$in") {
+					t.Fatalf("expected a.$in, got %#v", out)
+				}
+			},
+		},
+		{
+			name:  "Not_single_field_exists_true_replaced_with_exists_false",
+			input: bson.D{{"a", bson.D{{"$exists", true}}}},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$not") {
+					t.Fatalf("should not have $not")
+				}
+				if !hasOperator(out, "a", "$exists") {
+					t.Fatalf("expected a.$exists, got %#v", out)
+				}
+				val, _ := getField(out, "a")
+				valDoc := val.(bson.D)
+				for _, e := range valDoc {
+					if e.Key == "$exists" {
+						if b, ok := e.Value.(bool); !ok || b {
+							t.Fatalf("expected false, got %v", e.Value)
+						}
+					}
+				}
+			},
+		},
+		{
+			name:  "Not_single_field_gt_kept_as_not",
+			input: bson.D{{"a", bson.D{{"$gt", 5}}}},
+			check: func(t *testing.T, out bson.D) {
+				if !hasOperator(out, "a", "$not") {
+					t.Fatalf("expected a.$not, got %#v", out)
+				}
+			},
+		},
+		{
+			name:  "Not_double_negation_elimination",
+			input: bson.D{{"a", bson.D{{"$not", bson.D{{"$eq", 5}}}}}},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$not") {
+					t.Fatalf("should not have $not")
+				}
+				if !hasOperator(out, "a", "$eq") {
+					t.Fatalf("expected a.$eq after double negation elimination, got %#v", out)
+				}
+			},
+		},
+		{
+			name: "Not_implicit_and_multi_field_becomes_nor",
+			input: bson.D{
+				{"a", 1},
+				{"b", bson.D{{"$gt", 2}}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$nor") {
+					t.Fatalf("expected $nor, got %#v", out)
+				}
+				nor := extractNor(out)
+				if len(nor) != 1 {
+					t.Fatalf("expected 1 clause in $nor, got %d", len(nor))
+				}
+			},
+		},
+		{
+			name: "Not_explicit_and_becomes_or_with_negated_clauses",
+			input: bson.D{
+				{"$and", bson.A{
+					bson.D{{"a", bson.D{{"$gt", 5}}}},
+					bson.D{{"b", bson.D{{"$lt", 3}}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$or") {
+					t.Fatalf("expected $or, got %#v", out)
+				}
+				or := extractOr(out)
+				if len(or) != 2 {
+					t.Fatalf("expected 2 clauses in $or, got %d", len(or))
+				}
+				for _, clause := range or {
+					d, ok := clause.(bson.D)
+					if !ok || len(d) != 1 {
+						t.Fatalf("each clause should be single-field bson.D, got %#v", clause)
+					}
+					if !hasOperator(d, d[0].Key, "$not") {
+						t.Fatalf("clause %v should have $not\nret=%s", d[0].Key, toBSON(out))
+					}
+				}
+			},
+		},
+		{
+			name: "Not_explicit_or_becomes_and_with_negated_clauses",
+			input: bson.D{
+				{"$or", bson.A{
+					bson.D{{"a", bson.D{{"$gt", 5}}}},
+					bson.D{{"b", bson.D{{"$lt", 3}}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$and") || hasKey(out, "$or") {
+					t.Fatalf("should not have $and or $or, got %#v", out)
+				}
+				if !hasOperator(out, "a", "$not") {
+					t.Fatalf("expected a.$not, got %#v", out)
+				}
+				if !hasOperator(out, "b", "$not") {
+					t.Fatalf("expected b.$not, got %#v", out)
+				}
+				// 验证 a.$not 里面是 {$gt: 5}
+				valA, _ := getField(out, "a")
+				aDoc := valA.(bson.D)
+				found := false
+				for _, e := range aDoc {
+					if e.Key == "$not" {
+						notVal := e.Value.(bson.D)
+						for _, ne := range notVal {
+							if ne.Key == "$gt" {
+								found = true
+							}
+						}
+					}
+				}
+				if !found {
+					t.Fatalf("expected $gt inside a.$not")
+				}
+				// 验证 b.$not 里面是 {$lt: 3}
+				valB, _ := getField(out, "b")
+				bDoc := valB.(bson.D)
+				found = false
+				for _, e := range bDoc {
+					if e.Key == "$not" {
+						notVal := e.Value.(bson.D)
+						for _, ne := range notVal {
+							if ne.Key == "$lt" {
+								found = true
+							}
+						}
+					}
+				}
+				if !found {
+					t.Fatalf("expected $lt inside b.$not")
+				}
+			},
+		},
+		{
+			name: "Not_explicit_nor_becomes_or",
+			input: bson.D{
+				{"$nor", bson.A{
+					bson.D{{"a", bson.D{{"$gt", 5}}}},
+					bson.D{{"b", bson.D{{"$lt", 3}}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$or") {
+					t.Fatalf("expected $or, got %#v", out)
+				}
+				or := extractOr(out)
+				if len(or) != 2 {
+					t.Fatalf("expected 2 clauses in $or, got %d", len(or))
+				}
+			},
+		},
+		{
+			name: "Not_multi_operator_field_splits_into_and_then_negates",
+			input: bson.D{
+				{"a", bson.D{{"$gt", 5}, {"$lt", 10}}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$or") {
+					t.Fatalf("expected $or, got %#v", out)
+				}
+				or := extractOr(out)
+				if len(or) != 2 {
+					t.Fatalf("expected 2 clauses in $or, got %d", len(or))
+				}
+			},
+		},
+		{
+			name: "Not_regex_becomes_not_regex",
+			input: bson.D{
+				{"name", bson.Regex{Pattern: "^abc", Options: "i"}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasOperator(out, "name", "$not") {
+					t.Fatalf("expected name.$not, got %#v", out)
+				}
+				val, _ := getField(out, "name")
+				valDoc := val.(bson.D)
+				for _, e := range valDoc {
+					if e.Key == "$not" {
+						notVal := e.Value.(bson.D)
+						found := false
+						for _, ne := range notVal {
+							if ne.Key == "$regex" {
+								found = true
+							}
+						}
+						if !found {
+							t.Fatalf("expected $regex inside $not, got %#v", notVal)
+						}
+						return
+					}
+				}
+				t.Fatalf("$not not found in name")
+			},
+		},
+		{
+			name: "Not_pure_value_becomes_ne",
+			input: bson.D{
+				{"a", 5},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$not") {
+					t.Fatalf("should not have $not")
+				}
+				if !hasOperator(out, "a", "$ne") {
+					t.Fatalf("expected a.$ne, got %#v", out)
+				}
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out := runNot(tt.input)
+			tt.check(t, out)
+		})
+	}
+}
