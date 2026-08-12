@@ -93,6 +93,9 @@ func Type(f field.Field, t bson.Type) PartialIndexFilter {
 }
 
 func CompareByValue(f field.Field, c Comparer, value interface{}) Filter {
+	if c == EQ {
+		return FromBsonD(bson.D{{f.FullName(), value}})
+	}
 	return &base{
 		f:        f,
 		operator: c.String(),
