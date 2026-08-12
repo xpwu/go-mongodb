@@ -3,7 +3,6 @@ package filter
 import (
 	"bytes"
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"strings"
 )
 
 // filter: <field>: { <operator>: <value> }
@@ -66,6 +65,15 @@ func flattenAnd(arr bson.A) bson.D {
 			if e.Key == "$and" {
 				sub := flattenAnd(e.Value.(bson.A))
 				for _, elem := range sub {
+					// 返回的仍有 $and 关键字，说明内部不能再次合并，直接放 keeps 里面
+					if elem.Key == "$and" {
+						if a, ok := elem.Value.(bson.A); ok {
+							keeps = append(keeps, a...)
+							continue
+						}
+						// 格式不对的 $and, 理论上不存在此情况
+
+					}
 					docs = append(docs, elem)
 				}
 				continue
@@ -75,6 +83,7 @@ func flattenAnd(arr bson.A) bson.D {
 				if len(orResult) == 1 {
 					docs = append(docs, orResult[0])
 				}
+				// todo len(orResult) !=1 ? 正常情况不会出现，是否需要防御性代码
 				continue
 			}
 			if e.Key == "$nor" {
@@ -82,6 +91,7 @@ func flattenAnd(arr bson.A) bson.D {
 				if len(norResult) == 1 {
 					docs = append(docs, norResult[0])
 				}
+				// todo len(norResult) !=1 ? 正常情况不会出现，是否需要防御性代码
 				continue
 			}
 			if d, ok := e.Value.(bson.D); ok {
@@ -130,6 +140,11 @@ func flattenAnd(arr bson.A) bson.D {
 				fm[key] = &valField
 				placed = true
 				break
+			}
+
+			// todo
+			if key == "$and" || key == "$or" || key == "$nor" {
+
 			}
 
 			if valField.kind == kPure && f.kind == kPure {
@@ -432,7 +447,7 @@ func Or(filters ...Filter) Filter {
 	return &or{filters: filters}
 }
 
-func OrPartial(filter1, filter2 PartialIndexFilter, filters ...PartialIndexFilter) PartialIndexFilter {
+func OrPartial(filters ...PartialIndexFilter) PartialIndexFilter {
 	fil := make([]Filter, len(filters))
 	for i, a := range filters {
 		fil[i] = a
@@ -459,7 +474,7 @@ func (l *nor) ToBsonD() bson.D {
 // NOTE THAT: The exception in returning documents that do not contain the field in the $nor expression
 // is when the $nor operator is used with the $exists operator.
 // https://www.mongodb.com/docs/manual/reference/operator/query/nor/#-nor-and--exists
-func Nor(filter1, filter2 Filter, filters ...Filter) Filter {
+func Nor(filters ...Filter) Filter {
 	return &nor{filters: filters}
 }
 
@@ -476,14 +491,6 @@ func flattenNot(inner bson.D) bson.D {
 
 	key := inner[0].Key
 	val := inner[0].Value
-
-	// 已经是 $not，双重否定消除：Not(Not(f)) => f
-	if key == "$not" {
-		if d, ok := val.(bson.D); ok {
-			return flattenDoc(d)
-		}
-		return bson.D{{"$not", inner}}
-	}
 
 	if arr, ok := val.(bson.A); ok {
 		switch key {
@@ -525,15 +532,21 @@ func flattenNot(inner bson.D) bson.D {
 		}
 	}
 
-	// $op  {$gt: 5} => {$not: {$gt: 5}}
-	if strings.HasPrefix(key, "$") {
-		return bson.D{{"$not", inner}}
-	}
-
 	// 普通字段：{field: {$not: condition}}
 	// 例如 Not(Gt("a", 5)) => {a: {$not: {$gt: 5}}}
 	if d, ok := val.(bson.D); ok {
-		return bson.D{{key, flattenNot(d)}}
+		if len(d) == 0 {
+			return bson.D{{key, bson.D{{"$not", bson.D{}}}}}
+		}
+		if len(d) == 1 {
+			return bson.D{{key, notOp(d[0])}}
+		}
+		// { a: { $gt: 5, $lt: 7 } } => {"$and":[{a:{$gt:5}}, {a:{$lt:7}]}
+		var clauses []bson.D
+		for _, dn := range d {
+			clauses = append(clauses, bson.D{{key, bson.D{dn}}})
+		}
+		return flattenNot(bson.D{{"$and", toBsonA(clauses)}})
 	}
 
 	// 普通字段：{field: bson.Regex{}}
@@ -543,8 +556,46 @@ func flattenNot(inner bson.D) bson.D {
 	}
 
 	// 普通字段：{field: value} or {field: []values}
-	// Not({field: value}) => {field: {$not: {"$eq": value}}}
-	return bson.D{{key, bson.D{{"$not", bson.D{{"$eq", val}}}}}}
+	// Not({field: value}) => {field: {"$ne": value}}
+	return bson.D{{key, bson.D{{"$ne", val}}}}
+}
+
+// $not 取反等价替换规则：
+// $eq  ↔  $ne    // {a: {$not: {$eq: 5}}}    => {a: {$ne: 5}}
+// $ne  ↔  $eq    // {a: {$not: {$ne: 5}}}    => {a: {$eq: 5}}
+// $in  ↔  $nin   // {a: {$not: {$in: [1,2]}}} => {a: {$nin: [1,2]}}
+// $nin ↔  $in    // {a: {$not: {$nin: [1,2]}}} => {a: {$in: [1,2]}}
+// $exists: true  ↔  $exists: false
+// $exists: false ↔  $exists: true
+//
+// 以下不能直接替换（字段不存在的语义不同）：
+// $gt  → $lte   (不等价)
+// $gte → $lt    (不等价)
+// $lt  → $gte   (不等价)
+// $lte → $gt    (不等价)
+func notOp(op bson.E) bson.D {
+	// 已经是 $not，双重否定消除：Not(Not(f)) => f
+	if op.Key == "$not" {
+		if d, ok := op.Value.(bson.D); ok {
+			return flattenDoc(d)
+		}
+	}
+	switch op.Key {
+	case "$eq":
+		return bson.D{{"$ne", op.Value}}
+	case "$ne":
+		return bson.D{{"$eq", op.Value}}
+	case "$in":
+		return bson.D{{"$nin", op.Value}}
+	case "$nin":
+		return bson.D{{"$in", op.Value}}
+	case "$exists":
+		if b, ok := op.Value.(bool); ok {
+			return bson.D{{"$exists", !b}}
+		}
+	}
+
+	return bson.D{{"$not", bson.D{op}}}
 }
 
 type not struct {
@@ -564,6 +615,7 @@ func (n *not) ToBsonD() bson.D {
 // https://www.mongodb.com/docs/manual/reference/operator/query/not/#mongodb-query-op.-not
 //
 // Conversion rules (De Morgan's laws):
+//
 //   - Not(single field condition)  => {field: {$not: condition}}
 //     e.g. Not(Gt("a", 5))         => {a: {$not: {$gt: 5}}}
 //
