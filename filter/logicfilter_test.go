@@ -87,6 +87,15 @@ func hasOperator(d bson.D, field, op string) bool {
 	return false
 }
 
+func getField(d bson.D, key string) (interface{}, bool) {
+	for _, e := range d {
+		if e.Key == key {
+			return e.Value, true
+		}
+	}
+	return nil, false
+}
+
 func andContains(d bson.D, target bson.D) bool {
 	and := extractAnd(d)
 	for _, item := range and {
@@ -806,6 +815,141 @@ func TestFlattenDoc(t *testing.T) {
 				}
 				if nor[0] != "invalid" {
 					t.Fatalf("first element should be 'invalid', got %#v", nor[0])
+				}
+			},
+		},
+		{
+			name: "regex implicit converted to $regex and merged with pure value",
+			input: bson.D{
+				{"$and", bson.A{
+					bson.D{{"a", 7}},
+					bson.D{{"a", bson.Regex{Pattern: "^abc", Options: "i"}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$and") {
+					t.Fatalf("should not have $and")
+				}
+				val, ok := getField(out, "a")
+				if !ok {
+					t.Fatalf("missing a")
+				}
+				_, ok = val.(bson.D)
+				if !ok {
+					t.Fatalf("a value should be bson.D")
+				}
+				if !hasOperator(out, "a", "$eq") {
+					t.Fatalf("missing $eq in a\nflat=%s", toBSON(out))
+				}
+				if !hasOperator(out, "a", "$regex") {
+					t.Fatalf("missing $regex in a")
+				}
+			},
+		},
+		{
+			name: "regex explicit $regex with bson.Regex merged with $gt",
+			input: bson.D{
+				{"$and", bson.A{
+					bson.D{{"name", bson.D{{"$regex", bson.Regex{Pattern: "^abc", Options: "i"}}}}},
+					bson.D{{"name", bson.D{{"$gt", 18}}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$and") {
+					t.Fatalf("should not have $and")
+				}
+				val, ok := getField(out, "name")
+				if !ok {
+					t.Fatalf("missing name")
+				}
+				_, ok = val.(bson.D)
+				if !ok {
+					t.Fatalf("name value should be bson.D")
+				}
+				if !hasOperator(out, "name", "$regex") {
+					t.Fatalf("missing $regex in name")
+				}
+				if !hasOperator(out, "name", "$gt") {
+					t.Fatalf("missing $gt in name")
+				}
+			},
+		},
+		{
+			name: "regex explicit $regex string with $options merged with $gt",
+			input: bson.D{
+				{"$and", bson.A{
+					bson.D{{"name", bson.D{{"$regex", "^abc"}, {"$options", "i"}}}},
+					bson.D{{"name", bson.D{{"$gt", 18}}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if hasKey(out, "$and") {
+					t.Fatalf("should not have $and")
+				}
+				val, ok := getField(out, "name")
+				if !ok {
+					t.Fatalf("missing name")
+				}
+				_, ok = val.(bson.D)
+				if !ok {
+					t.Fatalf("name value should be bson.D")
+				}
+				if !hasOperator(out, "name", "$regex") {
+					t.Fatalf("missing $regex in name")
+				}
+				if !hasOperator(out, "name", "$gt") {
+					t.Fatalf("missing $gt in name")
+				}
+			},
+		},
+		{
+			name: "same field two $regex conflict keeps $and",
+			input: bson.D{
+				{"$and", bson.A{
+					bson.D{{"name", bson.D{{"$regex", "^abc"}}}},
+					bson.D{{"name", bson.D{{"$regex", "^def"}}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				and := extractAnd(out)
+				if len(and) != 2 {
+					t.Fatalf("expected 2 clauses in $and due to $regex conflict, got %d", len(and))
+				}
+			},
+		},
+		{
+			name: "regex in $or preserved",
+			input: bson.D{
+				{"$or", bson.A{
+					bson.D{{"name", bson.Regex{Pattern: "^abc", Options: "i"}}},
+					bson.D{{"age", bson.D{{"$gt", 18}}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$or") {
+					t.Fatalf("missing $or")
+				}
+				or := extractOr(out)
+				if len(or) != 2 {
+					t.Fatalf("expected 2 clauses in $or, got %d", len(or))
+				}
+			},
+		},
+		{
+			name: "regex in $nor preserved",
+			input: bson.D{
+				{"$nor", bson.A{
+					bson.D{{"name", bson.Regex{Pattern: "^admin", Options: "i"}}},
+					bson.D{{"status", "banned"}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$nor") {
+					t.Fatalf("missing $nor")
+				}
+				nor := extractNor(out)
+				if len(nor) != 2 {
+					t.Fatalf("expected 2 clauses in $nor, got %d", len(nor))
 				}
 			},
 		},

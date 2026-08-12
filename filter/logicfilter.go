@@ -136,7 +136,13 @@ func flattenAnd(arr bson.A) bson.D {
 					placed = true
 					break
 				}
-				continue
+				_, fok := f.value.(bson.Regex)
+				_, vok := valField.value.(bson.Regex)
+
+				if fok == vok {
+					continue
+				}
+				// falling through: kind = kPure && the one is $regex, the other is $eq
 			}
 
 			// merge $op
@@ -144,15 +150,32 @@ func flattenAnd(arr bson.A) bson.D {
 			var newOperator bson.D
 			if f.kind != valField.kind {
 				if f.kind == kPure {
-					existOperators = append(existOperators, bson.E{Key: "$eq", Value: f.value})
+					if r, ok := f.value.(bson.Regex); ok {
+						existOperators = append(existOperators, bson.E{Key: "$regex", Value: r})
+					} else {
+						existOperators = append(existOperators, bson.E{Key: "$eq", Value: f.value})
+					}
 					newOperator = valField.expr
 				} else {
 					existOperators = f.expr
-					newOperator = append(newOperator, bson.E{Key: "$eq", Value: valField.value})
+					if r, ok := valField.value.(bson.Regex); ok {
+						newOperator = append(newOperator, bson.E{Key: "$regex", Value: r})
+					} else {
+						newOperator = append(newOperator, bson.E{Key: "$eq", Value: valField.value})
+					}
 				}
-			} else {
+			} else if f.kind == kExpr {
 				existOperators = f.expr
 				newOperator = valField.expr
+			} else {
+				// f.kind == valField.kind == kPure && the one is $regex, the other is $eq
+				if fr, fok := f.value.(bson.Regex); fok {
+					existOperators = append(existOperators, bson.E{Key: "$regex", Value: fr})
+					newOperator = append(newOperator, bson.E{Key: "$eq", Value: valField.value})
+				} else {
+					existOperators = append(existOperators, bson.E{Key: "$eq", Value: f.value})
+					newOperator = append(newOperator, bson.E{Key: "$regex", Value: valField.value})
+				}
 			}
 
 			conflict := false
