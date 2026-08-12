@@ -647,6 +647,168 @@ func TestFlattenDoc(t *testing.T) {
 				}
 			},
 		},
+		{
+			name: "$nor nested $nor preserved (double negation)",
+			input: bson.D{
+				{"$nor", bson.A{
+					bson.D{{"a", 1}},
+					bson.D{{"$nor", bson.A{
+						bson.D{{"b", 2}},
+						bson.D{{"c", 3}},
+					}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$nor") {
+					t.Fatalf("missing $nor")
+				}
+				nor := extractNor(out)
+				if len(nor) != 2 {
+					t.Fatalf("expected 2 clauses in $nor, got %d", len(nor))
+				}
+				// 第二个 clause 应该还是 {$nor: [{b:2}, {c:3}]}
+				secondClause, ok := nor[1].(bson.D)
+				if !ok || len(secondClause) != 1 || secondClause[0].Key != "$nor" {
+					t.Fatalf("nested $nor should be preserved, got %#v", nor[1])
+				}
+			},
+		},
+		{
+			name: "$nor with $and inside",
+			input: bson.D{
+				{"$nor", bson.A{
+					bson.D{{"a", 1}, {"b", 2}},
+					bson.D{{"c", 3}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$nor") {
+					t.Fatalf("missing $nor")
+				}
+				nor := extractNor(out)
+				if len(nor) != 2 {
+					t.Fatalf("expected 2 clauses in $nor, got %d", len(nor))
+				}
+				// 第一个 clause 是隐式 $and，应该被 flattenAnd 处理
+				firstClause, ok := nor[0].(bson.D)
+				if !ok {
+					t.Fatalf("first clause should be bson.D")
+				}
+				// flattenAnd 应该把 {a:1, b:2} 合并成一个 bson.D
+				if len(firstClause) != 2 {
+					t.Fatalf("first clause should have 2 fields, got %d", len(firstClause))
+				}
+			},
+		},
+		{
+			name: "$nor with $or inside",
+			input: bson.D{
+				{"$nor", bson.A{
+					bson.D{{"$or", bson.A{
+						bson.D{{"a", 1}},
+						bson.D{{"b", 2}},
+					}}},
+					bson.D{{"c", 3}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$nor") {
+					t.Fatalf("missing $nor")
+				}
+				nor := extractNor(out)
+				if len(nor) != 2 {
+					t.Fatalf("expected 2 clauses in $nor, got %d", len(nor))
+				}
+				// 第一个 clause 应该包含 $or
+				firstClause, ok := nor[0].(bson.D)
+				if !ok || !hasKey(firstClause, "$or") {
+					t.Fatalf("first clause should contain $or")
+				}
+			},
+		},
+		{
+			name: "$nor single clause preserved",
+			input: bson.D{
+				{"$nor", bson.A{
+					bson.D{{"a", 1}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "$nor") {
+					t.Fatalf("$nor must be preserved")
+				}
+				nor := extractNor(out)
+				if len(nor) != 1 {
+					t.Fatalf("expected 1 clause, got %d", len(nor))
+				}
+			},
+		},
+		{
+			name: "$nor conflict preserved (same field, same operator)",
+			input: bson.D{
+				{"$nor", bson.A{
+					bson.D{{"a", bson.D{{"$gt", 1}}}},
+					bson.D{{"a", bson.D{{"$gt", 3}}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				nor := extractNor(out)
+				if len(nor) != 2 {
+					t.Fatalf("$nor conflict must be preserved, got %d clauses", len(nor))
+				}
+			},
+		},
+		{
+			name: "$and with $nor inside",
+			input: bson.D{
+				{"$and", bson.A{
+					bson.D{{"a", bson.D{{"$gt", 1}}}},
+					bson.D{{"$nor", bson.A{
+						bson.D{{"b", 1}},
+						bson.D{{"c", 2}},
+					}}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				if !hasKey(out, "a") {
+					t.Fatalf("missing a")
+				}
+				if !hasKey(out, "$nor") {
+					t.Fatalf("missing $nor")
+				}
+				nor := extractNor(out)
+				if len(nor) != 2 {
+					t.Fatalf("expected 2 clauses in $nor, got %d", len(nor))
+				}
+			},
+		},
+		{
+			name: "empty $nor",
+			input: bson.D{
+				{"$nor", bson.A{}},
+			},
+			expected: bson.D{
+				{"$nor", bson.A{}},
+			},
+		},
+		{
+			name: "$nor with non-doc element",
+			input: bson.D{
+				{"$nor", bson.A{
+					"invalid",
+					bson.D{{"a", 1}},
+				}},
+			},
+			check: func(t *testing.T, out bson.D) {
+				nor := extractNor(out)
+				if len(nor) != 2 {
+					t.Fatalf("expected 2 elements in $nor, got %d", len(nor))
+				}
+				if nor[0] != "invalid" {
+					t.Fatalf("first element should be 'invalid', got %#v", nor[0])
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -660,6 +822,17 @@ func TestFlattenDoc(t *testing.T) {
 			}
 		})
 	}
+}
+
+func extractNor(d bson.D) bson.A {
+	for _, e := range d {
+		if e.Key == "$nor" {
+			if arr, ok := e.Value.(bson.A); ok {
+				return arr
+			}
+		}
+	}
+	return nil
 }
 
 func randomFilter(maxDepth int) bson.D {
