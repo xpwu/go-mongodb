@@ -5,6 +5,7 @@ import (
 	"github.com/xpwu/go-mongodb/field"
 	"github.com/xpwu/go-mongodb/filter"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"strings"
 )
 
 // Inclusion provides type-safe projection builders for array fields.
@@ -105,7 +106,7 @@ func IncludeWithElemMatch(fil filter.Filter) *IncludeBuilder {
 // It is kept for use cases where the fields package is not in scope.
 func IncludeWithFirstMatch(field field.Field) *IncludeBuilder {
 	b := &IncludeBuilder{seen: make(map[string]int)}
-	path := fmt.Sprintf("%s.$", field)
+	path := fmt.Sprintf("%s.$", field.FullName())
 	b.seen[path] = 0
 	b.proj = append(b.proj, bson.E{Key: path, Value: 1})
 	return b
@@ -149,6 +150,8 @@ func (b *IncludeBuilder) WithSearchRelevance(name string) *IncludeBuilder {
 //
 // 2. Partial + partial on same ancestor → first wins (同字段部分之间，先写赢)
 //    If two partial operations have an ancestor relationship, the first write wins.
+//		a.1.b vs a.0.b ---> a.1.b
+//		a.0.b 与 a.1.b ---> a.0.b
 //    如果两个部分操作存在祖先关系，先写的保留，后写的被抛弃。
 //
 // 3. Duplicate field: later discarded, first wins (同名字段，后写抛弃)
@@ -172,10 +175,13 @@ func (b *IncludeBuilder) Field(field field.Field) {
 	b.addField(field.FullName(), 1)
 }
 
+func (b *IncludeBuilder) Build() bson.D {
+	return b.proj
+}
+
 // ─── Internal ───
 
 func (b *IncludeBuilder) addField(field string, value interface{}) {
-	// Same field: partial overrides whole, whole is discarded when existing is partial
 	if i, ok := b.seen[field]; ok {
 		if value != 1 {
 			b.proj[i] = bson.E{Key: field, Value: value}
@@ -183,8 +189,10 @@ func (b *IncludeBuilder) addField(field string, value interface{}) {
 		return
 	}
 
+	fieldIsPartial := isPartialOrIndex(field, value)
+
 	// Rule 1: Partial wins over whole (ancestor check)
-	if isPartialOrIndex(field, value) {
+	if fieldIsPartial {
 		for existing, idx := range b.seen {
 			if isAncestor(existing, field) && b.proj[idx].Value == 1 {
 				b.proj = append(b.proj[:idx], b.proj[idx+1:]...)
@@ -199,18 +207,18 @@ func (b *IncludeBuilder) addField(field string, value interface{}) {
 		}
 	}
 
-	// Rule 2: Partial + partial on same ancestor → first wins
+	// Rule 2: Partial + partial, ancestor → first wins
 	for existing := range b.seen {
 		if isAncestor(existing, field) {
 			return
 		}
 	}
 
-	// Rule 4: Whole parent + whole child → keep parent, discard child
-	// Only when existing is also a whole (not an array partial)
-	if value == 1 {
+	// Rule 4: Whole parent + whole child → keep parent
+	if !fieldIsPartial {
 		for existing, idx := range b.seen {
-			if isAncestor(field, existing) && b.proj[idx].Value == 1 && !isPartialOrIndex(existing, b.proj[idx].Value) {
+			existingIsWhole := !isPartialOrIndex(existing, b.proj[idx].Value)
+			if isAncestor(field, existing) && b.proj[idx].Value == 1 && existingIsWhole {
 				b.proj = append(b.proj[:idx], b.proj[idx+1:]...)
 				for f, i := range b.seen {
 					if i > idx {
@@ -222,24 +230,41 @@ func (b *IncludeBuilder) addField(field string, value interface{}) {
 		}
 	}
 
-	// Rule 5: Partial vs whole child on same array → partial wins regardless of order
-	if value == 1 {
-		for existing := range b.seen {
-			if sameArrayField(existing, field) && isPartialOrIndex(existing, b.proj[b.seen[existing]].Value) {
-				return
+	// Rule 5: Partial vs whole on same array → partial wins
+	if fieldIsPartial {
+		fieldRoot := arrayRoot(field)
+		for existing, idx := range b.seen {
+			ev := b.proj[idx].Value
+			if ev == 1 && !isPartialOrIndex(existing, ev) {
+				// existing is whole, current is partial, same array → remove existing
+				existRoot := arrayRoot(existing)
+				// a.b.c vs a.b.0 ---> a.b.0
+				if fieldRoot == existRoot || strings.HasPrefix(existRoot, fieldRoot+".") {
+					b.proj = append(b.proj[:idx], b.proj[idx+1:]...)
+					for f, i := range b.seen {
+						if i > idx {
+							b.seen[f] = i - 1
+						}
+					}
+					delete(b.seen, existing)
+					break
+				}
+			}
+			if isPartialOrIndex(existing, ev) {
+				// both partial, same array → first wins
+				if arrayRoot(field) == arrayRoot(existing) {
+					return
+				}
 			}
 		}
 	} else {
-		for existing, idx := range b.seen {
-			if sameArrayField(existing, field) && !isPartialOrIndex(existing, b.proj[idx].Value) && b.proj[idx].Value == 1 {
-				b.proj = append(b.proj[:idx], b.proj[idx+1:]...)
-				for f, i := range b.seen {
-					if i > idx {
-						b.seen[f] = i - 1
-					}
+		for existing := range b.seen {
+			ev := b.proj[b.seen[existing]].Value
+			if isPartialOrIndex(existing, ev) {
+				root := arrayRoot(existing)
+				if field == root || strings.HasPrefix(field, root+".") {
+					return
 				}
-				delete(b.seen, existing)
-				break
 			}
 		}
 	}
@@ -248,33 +273,27 @@ func (b *IncludeBuilder) addField(field string, value interface{}) {
 	b.proj = append(b.proj, bson.E{Key: field, Value: value})
 }
 
-func (b *IncludeBuilder) Build() bson.D {
-	return b.proj
-}
-
-// ─── Helpers ───
-
 func isPartialOrIndex(field string, value interface{}) bool {
 	if value != 1 {
 		return true
 	}
-	lastDot := -1
-	for i := len(field) - 1; i >= 0; i-- {
-		if field[i] == '.' {
-			lastDot = i
-			break
+	segments := strings.Split(field, ".")
+	for _, seg := range segments {
+		if seg == "$" {
+			return true
+		}
+		allDigits := true
+		for _, c := range seg {
+			if c < '0' || c > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits && len(seg) > 0 {
+			return true
 		}
 	}
-	if lastDot == -1 {
-		return false
-	}
-	segment := field[lastDot+1:]
-	for _, c := range segment {
-		if c < '0' || c > '9' {
-			return false
-		}
-	}
-	return len(segment) > 0
+	return false
 }
 
 func isAncestor(parent, child string) bool {
@@ -284,31 +303,28 @@ func isAncestor(parent, child string) bool {
 	return len(child) > len(parent) && child[len(parent)] == '.' && child[:len(parent)] == parent
 }
 
-func sameArrayField(a, b string) bool {
-	baseA := arrayFieldBase(a)
-	baseB := arrayFieldBase(b)
-	return baseA != "" && baseA == baseB
-}
-
-func arrayFieldBase(path string) string {
-	lastDot := -1
-	for i := len(path) - 1; i >= 0; i-- {
-		if path[i] == '.' {
-			lastDot = i
-			break
+func arrayRoot(path string) string {
+	segments := strings.Split(path, ".")
+	for i, seg := range segments {
+		if seg == "$" {
+			if i == 0 {
+				return ""
+			}
+			return strings.Join(segments[:i], ".")
+		}
+		allDigits := true
+		for _, c := range seg {
+			if c < '0' || c > '9' {
+				allDigits = false
+				break
+			}
+		}
+		if allDigits && len(seg) > 0 {
+			if i == 0 {
+				return ""
+			}
+			return strings.Join(segments[:i], ".")
 		}
 	}
-	if lastDot == -1 {
-		return ""
-	}
-	segment := path[lastDot+1:]
-	if segment == "$" {
-		return path[:lastDot]
-	}
-	for _, c := range segment {
-		if c < '0' || c > '9' {
-			return ""
-		}
-	}
-	return path[:lastDot]
+	return path
 }
