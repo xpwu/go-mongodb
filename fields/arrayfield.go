@@ -5,6 +5,7 @@ import (
 	"github.com/xpwu/go-mongodb/field"
 	"github.com/xpwu/go-mongodb/filter"
 	"github.com/xpwu/go-mongodb/index"
+	"github.com/xpwu/go-mongodb/projection"
 	"github.com/xpwu/go-mongodb/updater"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"sync/atomic"
@@ -44,6 +45,7 @@ type VirValue filter.Filter
 
 type ArrayBaseField[T any, ElemField field.Field] interface {
 	field.Field
+	projection.Inclusion[ElemField]
 
 	// AtPos returns the element at the given index pos.
 	//
@@ -401,4 +403,21 @@ func (a *arrayBaseField[T, ElemField]) FirstMatched() (elem ElemField) {
 
 func (a *arrayBaseField[T, ElemField]) UpdateAll() (elem ElemField) {
 	return a.newElemField(fmt.Sprintf("%s.$[]", a.FullName()))
+}
+
+func (a *arrayBaseField[T, ElemField]) ProjectWithSlice(n int) *projection.IncludeBuilder {
+	return projection.IncludeWithSlice(a, n)
+}
+
+func (a *arrayBaseField[T, ElemField]) ProjectWithSliceRange(skip, limit int) *projection.IncludeBuilder {
+	return projection.IncludeWithSliceRange(a, skip, limit)
+}
+
+func (a *arrayBaseField[T, ElemField]) ProjectWithElemMatch(f func(theOne ElemField) filter.Filter) *projection.IncludeBuilder {
+	fil := f(a.newElemField(""))
+	return projection.IncludeWithElemMatch(filter.SameElemMatch(a, fil))
+}
+
+func (a *arrayBaseField[T, ElemField]) ProjectWithFirstMatch() *projection.IncludeBuilder {
+	return projection.IncludeWithFirstMatch(a)
 }
