@@ -34,13 +34,6 @@ func WithPreserveField(ignoreTagErr bool) Option {
 	}
 }
 
-// IgnoreTagErr 忽略 minsize & truncate & omitempty tag的报错
-//func IgnoreTagErr() Option {
-//	return func(option *Opts) {
-//		option.IgnoreTagErr = true
-//	}
-//}
-
 func GetDefaultOpts() *Opts {
 	return &Opts{
 		BsonOpts:      nil,
