@@ -36,7 +36,7 @@ func (b *BaseField[T]) Gt(value T) filter.PartialIndexFilter {
 }
 
 func (b *BaseField[T]) GtField(f filter.BaseFilterField[T]) filter.Filter {
-	return filter.CompareByValue(b, filter.GT, f)
+	return filter.CompareByField(b, filter.GT, f)
 }
 
 func (b *BaseField[T]) Lt(value T) filter.PartialIndexFilter {
@@ -44,7 +44,7 @@ func (b *BaseField[T]) Lt(value T) filter.PartialIndexFilter {
 }
 
 func (b *BaseField[T]) LtField(f filter.BaseFilterField[T]) filter.Filter {
-	return filter.CompareByValue(b, filter.LT, f)
+	return filter.CompareByField(b, filter.LT, f)
 }
 
 func (b *BaseField[T]) Gte(value T) filter.PartialIndexFilter {
@@ -52,7 +52,7 @@ func (b *BaseField[T]) Gte(value T) filter.PartialIndexFilter {
 }
 
 func (b *BaseField[T]) GteField(f filter.BaseFilterField[T]) filter.Filter {
-	return filter.CompareByValue(b, filter.GTE, f)
+	return filter.CompareByField(b, filter.GTE, f)
 }
 
 func (b *BaseField[T]) Lte(value T) filter.PartialIndexFilter {
@@ -60,7 +60,7 @@ func (b *BaseField[T]) Lte(value T) filter.PartialIndexFilter {
 }
 
 func (b *BaseField[T]) LteField(f filter.BaseFilterField[T]) filter.Filter {
-	return filter.CompareByValue(b, filter.LTE, f)
+	return filter.CompareByField(b, filter.LTE, f)
 }
 
 var (
