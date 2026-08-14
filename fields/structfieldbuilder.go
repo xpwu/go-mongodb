@@ -48,8 +48,27 @@ type TypeInfo struct {
 	EqualAble bool
 }
 
+// NewTypeInfo creates a TypeInfo for the given type T.
+//
+// creator must be a named, non-generic function. This API does not support
+// generic functions or anonymous functions.
+//
+// Correct:
+//
+//	func newNameField(name string) field.Field {
+//	    return fields.NewStringField(name)
+//	}
+//	NewTypeInfo[User](newNameField)
+//
+// Not supported:
+//
+//	NewTypeInfo[User](func(name string) field.Field { ... }) // anonymous
+//	NewTypeInfo[User](NewStringField[User])                  // generic
 func NewTypeInfo[T any, FieldType field.Field](creator func(name string) FieldType) TypeInfo {
 	name := runtime.FuncForPC(reflect.ValueOf(creator).Pointer()).Name()
+	if strings.HasSuffix(name, "]") {
+		panic("Not support generic function")
+	}
 	f := strings.FieldsFunc(name, func(r rune) bool {
 		if r == '.' {
 			return true
@@ -58,7 +77,7 @@ func NewTypeInfo[T any, FieldType field.Field](creator func(name string) FieldTy
 	})
 
 	funName := &reflectType{pkg: strings.Join(f[:len(f)-1], "."), name: f[len(f)-1]}
-	equalAble := x.TypeFor[FieldType]().Implements(x.TypeFor[filter.ComparableFilterField[any]]())
+	equalAble := x.TypeFor[FieldType]().Implements(x.TypeFor[filter.ComparableFilterField[T]]())
 
 	return TypeInfo{x.TypeFor[T](), x.TypeFor[FieldType](), funName, equalAble}
 }
@@ -149,6 +168,14 @@ func NewStructFieldBuilder(opts ...xopt.Option) *StructFieldBuilder {
 	b.RegisterKind(reflect.Ptr, b.buildPtr)
 
 	b.registerDefaultKind()
+
+	return b
+}
+
+// SetDirAndPkg sets the output directory and package name.
+func (b *StructFieldBuilder) SetDirAndPkg(dir, targetPkg string) *StructFieldBuilder {
+	b.opt.dir = dir
+	b.opt.targetPkg = targetPkg
 
 	return b
 }
@@ -428,10 +455,20 @@ func (b *StructFieldBuilder) build(rt reflect.Type) (ft TypeInfo, ok bool) {
 	return
 }
 
-func getRuntimeInfo() (pkg, dir string) {
-	pc, file, _, ok := runtime.Caller(3)
+// before 返回 s 中第一次出现 sep 之前的部分（不含 sep）
+// 如果 sep 不存在，返回原字符串 s
+func before(s, sep string) string {
+	if i := strings.Index(s, sep); i != -1 {
+		return s[:i]
+	}
+	return s
+}
+
+func getRuntimeInfo(skip int) (pkg, dir string) {
+	pc, file, _, ok := runtime.Caller(skip)
 	if ok {
 		fName := runtime.FuncForPC(pc).Name()
+		fName = before(fName, "[")
 		f := strings.FieldsFunc(fName, func(r rune) bool {
 			if r == '.' {
 				return true
@@ -446,30 +483,41 @@ func getRuntimeInfo() (pkg, dir string) {
 	return
 }
 
-func BuildStruct[T any](builder *StructFieldBuilder) {
+// BuildStruct creates a struct type using the given builder.
+// The returned subDir is both the subdirectory path and the sub-package name.
+func BuildStruct[T any](builder *StructFieldBuilder) (subDir string) {
 	if builder.opt.dir == "" || builder.opt.targetPkg == "" {
-		builder.targetPkg, builder.dir = getRuntimeInfo()
+		builder.targetPkg, builder.dir = getRuntimeInfo(2)
 	} else {
 		builder.targetPkg = builder.opt.targetPkg
 		builder.dir = builder.opt.dir
 	}
 
-	builder.Build(x.TypeFor[T]())
+	return builder.Build(x.TypeFor[T]())
 }
 
-func (b *StructFieldBuilder) Build(rt reflect.Type) {
+// Build creates a struct type using the receiver b.
+// The returned subDir is both the subdirectory path and the sub-package name.
+func (b *StructFieldBuilder) Build(rt reflect.Type) (subDir string) {
 	if rt.Kind() == reflect.Ptr {
 		rt = rt.Elem()
 	}
 
-	if b.opt.dir == "" || b.opt.targetPkg == "" {
-		b.targetPkg, b.dir = getRuntimeInfo()
-	} else {
-		b.targetPkg = b.opt.targetPkg
-		b.dir = b.opt.dir
+	if b.targetPkg == "" || b.dir == "" {
+		if b.opt.dir == "" || b.opt.targetPkg == "" {
+			b.targetPkg, b.dir = getRuntimeInfo(2)
+		} else {
+			b.targetPkg = b.opt.targetPkg
+			b.dir = b.opt.dir
+		}
 	}
 
-	b.build(rt)
+	ty, _ := b.build(rt)
+	if ty.Field.PkgPath() == b.targetPkg {
+		return ""
+	}
+
+	return strings.TrimPrefix(ty.Field.PkgPath(), b.targetPkg+"/")
 }
 
 func firstToLower(s string) string {
