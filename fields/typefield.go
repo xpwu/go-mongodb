@@ -87,29 +87,34 @@ var (
 	NewUint64Field = NewUnIntegerField[uint64, int64]
 )
 
-type StringFilter interface {
+type LikeStringFilter[T ~string] interface {
 	Regex(regex bson.Regex) filter.Filter
-	filter.ComparableFilter[string]
+	filter.ComparableFilter[T]
 }
 
-type StringField interface {
+type LikeStringField[T ~string] interface {
 	field.Field
-	StringFilter
-	updater.BaseUpdater[string]
+	LikeStringFilter[T]
+	updater.BaseUpdater[T]
 	index.BaseKey
 }
 
-type stringField struct {
-	BaseField[string]
+type stringField[T ~string] struct {
+	BaseField[T]
 }
 
-func (s *stringField) Regex(regex bson.Regex) filter.Filter {
+func (s *stringField[T]) Regex(regex bson.Regex) filter.Filter {
 	return filter.FromBsonD(bson.D{{s.FullName(), regex}})
 }
 
-func NewStringField(name string) StringField {
-	return &stringField{BaseField[string]{name}}
+func NewLikeStringField[T ~string](name string) LikeStringField[T] {
+	return &stringField[T]{BaseField[T]{name}}
 }
+
+type StringFilter = LikeStringFilter[string]
+type StringField = LikeStringField[string]
+
+var NewStringField = NewLikeStringField[string]
 
 type ComparableField[T ~bool | bson.ObjectID] interface {
 	field.Field

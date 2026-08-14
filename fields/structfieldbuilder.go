@@ -148,7 +148,250 @@ func NewStructFieldBuilder(opts ...xopt.Option) *StructFieldBuilder {
 	b.RegisterKind(reflect.Array, b.buildSlice)
 	b.RegisterKind(reflect.Ptr, b.buildPtr)
 
+	b.registerDefaultKind()
+
 	return b
+}
+
+func (b *StructFieldBuilder) registerDefaultKind() {
+	b.RegisterKind(reflect.Bool, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[ComparableField[bool]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("ComparableField[%s]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewComparableField[%s]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Int, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[IntegerField[int]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("IntegerField[%s]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewIntegerField[%s]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Int8, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[IntegerField[int]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("IntegerField[%s]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewIntegerField[%s]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Int16, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[IntegerField[int]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("IntegerField[%s]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewIntegerField[%s]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Int32, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[IntegerField[int]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("IntegerField[%s]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewIntegerField[%s]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Int64, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[IntegerField[int]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("IntegerField[%s]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewIntegerField[%s]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Uint, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[UnIntegerField[uint, int]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("UnIntegerField[%s, int]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewUnIntegerField[%s, int]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Uint8, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[UnIntegerField[uint, int]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("UnIntegerField[%s, int8]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewUnIntegerField[%s, int8]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Uint16, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[UnIntegerField[uint, int]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("UnIntegerField[%s, int16]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewUnIntegerField[%s, int16]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Uint32, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[UnIntegerField[uint, int]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("UnIntegerField[%s, int32]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewUnIntegerField[%s, int32]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Uint64, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[UnIntegerField[uint, int]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("UnIntegerField[%s, int64]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewUnIntegerField[%s, int64]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Float32, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[ComputableField[float32]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("ComputableField[%s]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewComputableField[%s]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.Float64, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[ComputableField[float64]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("ComputableField[%s]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewComputableField[%s]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
+	b.RegisterKind(reflect.String, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[LikeStringField[string]]().PkgPath()
+
+		return TypeInfo{rt,
+				&reflectType{
+					name: fmt.Sprintf("LikeStringField[%s]", rtName),
+					pkg:  pkg,
+				},
+				&reflectType{
+					name: fmt.Sprintf("NewLikeStringField[%s]", rtName),
+					pkg:  pkg,
+				},
+				true},
+			true
+	})
 }
 
 func (b *StructFieldBuilder) ClearType(rt reflect.Type) *StructFieldBuilder {
