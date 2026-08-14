@@ -13,6 +13,10 @@ import (
 // filter: $or: [filter]
 // filter: $nor: [filter]
 
+func FlattenDoc(doc bson.D) bson.D {
+	return flattenDoc(doc)
+}
+
 func flattenDoc(docs bson.D) bson.D {
 	if len(docs) == 0 {
 		return docs
