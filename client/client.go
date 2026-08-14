@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/xpwu/go-mongodb/filter"
 	"github.com/xpwu/go-mongodb/index"
+	"github.com/xpwu/go-mongodb/projection"
 	"github.com/xpwu/go-mongodb/updater"
 	"github.com/xpwu/go-mongodb/x"
 	"github.com/xpwu/go-mongodb/xopt"
@@ -121,6 +122,58 @@ func GetLowerFieldRegistry() *bson.Registry {
 		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
 	}
 	r.RegisterTypeEncoder(keyType, bson.ValueEncoderFunc(keyEncoder))
+
+	incType := x.TypeFor[projection.IncludeBuilder]()
+	incEncoder := func(
+		ec bson.EncodeContext,
+		vw bson.ValueWriter,
+		val reflect.Value,
+	) error {
+		// All encoder implementations should check that val is valid and is of
+		// the correct type before proceeding.
+		if !val.IsValid() || val.Type() != incType {
+			return bson.ValueEncoderError{
+				Name:     "IncludeBuilderEncoder",
+				Types:    []reflect.Type{incType},
+				Received: val,
+			}
+		}
+
+		v := val.Interface().(*projection.IncludeBuilder).Build()
+		enc, err := ec.LookupEncoder(reflect.TypeOf(v))
+		if err != nil {
+			return err
+		}
+
+		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
+	}
+	r.RegisterTypeEncoder(incType, bson.ValueEncoderFunc(incEncoder))
+
+	excType := x.TypeFor[projection.ExcludeBuilder]()
+	excEncoder := func(
+		ec bson.EncodeContext,
+		vw bson.ValueWriter,
+		val reflect.Value,
+	) error {
+		// All encoder implementations should check that val is valid and is of
+		// the correct type before proceeding.
+		if !val.IsValid() || val.Type() != excType {
+			return bson.ValueEncoderError{
+				Name:     "ExcludeBuilderEncoder",
+				Types:    []reflect.Type{excType},
+				Received: val,
+			}
+		}
+
+		v := val.Interface().(*projection.ExcludeBuilder).Build()
+		enc, err := ec.LookupEncoder(reflect.TypeOf(v))
+		if err != nil {
+			return err
+		}
+
+		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
+	}
+	r.RegisterTypeEncoder(excType, bson.ValueEncoderFunc(excEncoder))
 
 	return r
 }
