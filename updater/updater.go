@@ -10,19 +10,19 @@ type Updater interface {
 	ToBsonM() bson.M
 }
 
-type base struct {
+type base[T any] struct {
 	f     field.Field
 	op    string
-	value interface{}
+	value T
 }
 
-func (b *base) ToBsonM() bson.M {
+func (b *base[T]) ToBsonM() bson.M {
 	// {op: {f:value, ...}, ...}
 	return bson.M{b.op: bson.M{b.f.FullName(): b.value}}
 }
 
-func New(f field.Field, op string, value interface{}) Updater {
-	return &base{
+func New[T any](f field.Field, op string, value T) Updater {
+	return &base[T]{
 		f:     f,
 		op:    op,
 		value: value,
@@ -72,18 +72,18 @@ func Batch(updaters ...Updater) Updater {
 }
 
 func PullByFilter(f field.Field, filter filter.Filter) Updater {
-	return &base{
+	return &base[bson.D]{
 		f:     f,
 		op:    `$pull`,
 		value: filter.ToBsonD(),
 	}
 }
 
-func PushByModifier(f field.Field, modifier PushModifier, each interface{}) Updater {
+func PushByModifier(f field.Field, modifier *PushModifier, each interface{}) Updater {
 	val := modifier.toBsonM()
 	val[`$each`] = each
 
-	return &base{
+	return &base[bson.M]{
 		f:     f,
 		op:    `$push`,
 		value: val,
