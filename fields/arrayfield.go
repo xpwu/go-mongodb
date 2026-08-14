@@ -268,7 +268,7 @@ type ArrayBaseUpdater[T any, ElemField field.Field] interface {
 	// 4. Store the array.
 	//
 	// https://www.mongodb.com/docs/manual/reference/operator/update/push/#use--push-operator-with-multiple-modifiers
-	PushWith(values []T, f func(elem ElemField) updater.PushModifier) updater.Updater
+	PushWith(values []T, f func(elem ElemField) *updater.PushModifier) updater.Updater
 }
 
 // ArrayComparableUpdater T ~ comparable | EqualAble
@@ -361,7 +361,7 @@ func (a *arrayBaseField[T, ElemField]) Push(values []T) updater.Updater {
 }
 
 func (a *arrayBaseField[T, ElemField]) PushWith(values []T,
-	f func(elem ElemField) updater.PushModifier) updater.Updater {
+	f func(elem ElemField) *updater.PushModifier) updater.Updater {
 
 	return updater.PushByModifier(a, f(a.newElemField("")), values)
 }
@@ -385,7 +385,11 @@ func (a *arrayBaseField[T, ElemField]) CoverValues(values []T) filter.Filter {
 
 func (a *arrayBaseField[T, ElemField]) CoverVirValues(f func(sameElem ElemField) []VirValue) filter.Filter {
 	virValues := f(a.newElemField(""))
-	return filter.New(a, "$all", virValues)
+	ba := make(bson.A, 0, len(virValues))
+	for _, v := range virValues {
+		ba = append(ba, v.ToBsonD())
+	}
+	return filter.New(a, "$all", ba)
 }
 
 var counter atomic.Uint64
