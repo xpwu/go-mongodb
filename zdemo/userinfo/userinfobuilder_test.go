@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/xpwu/go-mongodb/fields"
 	"github.com/xpwu/go-mongodb/zdemo/elsetype"
+	"reflect"
 )
 
 func ExampleStructFieldBuilder() {
@@ -11,7 +12,7 @@ func ExampleStructFieldBuilder() {
 	builder := fields.NewStructFieldBuilder()
 
 	fields.BuildStruct[UserInfo](builder)
-	fields.BuildStruct[elsetype.ThirdParty](builder)
+	builder.Build(reflect.TypeOf(elsetype.ThirdParty{}))
 
 	fmt.Println(true)
 	// Output:
