@@ -204,7 +204,7 @@ func TestUpdater_PushByModifier_WithPosition(t *testing.T) {
 	modifier := NewModifier(Position(0))
 	values := []int{99, 100}
 
-	u := PushByModifier(f, *modifier, values)
+	u := PushByModifier(f, modifier, values)
 	got := u.ToBsonM()
 
 	want := bson.M{
@@ -226,7 +226,7 @@ func TestUpdater_PushByModifier_WithSlice(t *testing.T) {
 	modifier := NewModifier(Slice(5))
 	values := []int{1, 2, 3}
 
-	u := PushByModifier(f, *modifier, values)
+	u := PushByModifier(f, modifier, values)
 	got := u.ToBsonM()
 
 	want := bson.M{
@@ -248,7 +248,7 @@ func TestUpdater_PushByModifier_WithSortAsc(t *testing.T) {
 	modifier := NewModifier(Asc())
 	values := []int{10, 20, 30}
 
-	u := PushByModifier(f, *modifier, values)
+	u := PushByModifier(f, modifier, values)
 	got := u.ToBsonM()
 
 	want := bson.M{
@@ -270,7 +270,7 @@ func TestUpdater_PushByModifier_WithSortDesc(t *testing.T) {
 	modifier := NewModifier(Desc())
 	values := []int{10, 20, 30}
 
-	u := PushByModifier(f, *modifier, values)
+	u := PushByModifier(f, modifier, values)
 	got := u.ToBsonM()
 
 	want := bson.M{
@@ -293,7 +293,7 @@ func TestUpdater_PushByModifier_WithSortAscWithField(t *testing.T) {
 	modifier := NewModifier(AscWith(sortField))
 	values := []bson.M{{"wk": 5, "score": 8}}
 
-	u := PushByModifier(f, *modifier, values)
+	u := PushByModifier(f, modifier, values)
 	got := u.ToBsonM()
 
 	want := bson.M{
@@ -319,7 +319,7 @@ func TestUpdater_PushByModifier_AllOptions(t *testing.T) {
 	)
 	values := []bson.M{{"wk": 5, "score": 8}}
 
-	u := PushByModifier(f, *modifier, values)
+	u := PushByModifier(f, modifier, values)
 	got := u.ToBsonM()
 
 	want := bson.M{
