@@ -58,7 +58,7 @@ type LineString struct {
 	C    []Coordinate `bson:"coordinates"`
 }
 
-func NewLineString(c []Coordinate) *LineString {
+func NewLineString(c ...Coordinate) *LineString {
 	return &LineString{
 		Type: "LineString",
 		C:    c,
@@ -72,10 +72,10 @@ type MultiLineString struct {
 	C    []LintStringC `bson:"coordinates"`
 }
 
-func NewMultiLineString(l LineString, ls ...LineString) *MultiLineString {
+func NewMultiLineString(ls ...LineString) *MultiLineString {
 	ret := &MultiLineString{
 		Type: "MultiLineString",
-		C:    []LintStringC{l.C},
+		C:    []LintStringC{},
 	}
 	for _, l := range ls {
 		ret.C = append(ret.C, l.C)
@@ -111,14 +111,13 @@ type MultiPolygon struct {
 	C    []PolygonC `bson:"coordinates"`
 }
 
-func NewMultiPolygon(pg1 Polygon, pgs ...Polygon) *MultiPolygon {
+func NewMultiPolygon(pgs ...Polygon) *MultiPolygon {
 	ret := &MultiPolygon{
 		Type: "MultiPolygon",
-		C:    make([]PolygonC, len(pgs)+1),
+		C:    make([]PolygonC, len(pgs)),
 	}
-	ret.C[0] = pg1.C
 	for i, pg := range pgs {
-		ret.C[i+1] = pg.C
+		ret.C[i] = pg.C
 	}
 
 	return ret
