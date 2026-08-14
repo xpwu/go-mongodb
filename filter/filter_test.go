@@ -10,15 +10,6 @@ import (
 // 模拟 field.Field 接口的最小实现
 // 如果外部包中 field.Field 接口方法不同，请调整
 
-func hasOperator2(d bson.D, op string) bool {
-	for _, e := range d {
-		if e.Key == op {
-			return true
-		}
-	}
-	return false
-}
-
 type mockField struct {
 	name   string
 	parent *mockField
@@ -149,8 +140,8 @@ func TestCompareByField_AllComparers(t *testing.T) {
 			// 验证值是 [x, y]
 			for _, e := range exprDoc {
 				if e.Key == tt.op {
-					arr, ok := e.Value.([]string)
-					if !ok || len(arr) != 2 || arr[0] != "x" || arr[1] != "y" {
+					arr, ok := e.Value.(bson.A)
+					if !ok || len(arr) != 2 || arr[0] != "$x" || arr[1] != "$y" {
 						t.Fatalf("expected [x,y], got %#v", e.Value)
 					}
 				}

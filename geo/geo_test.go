@@ -138,7 +138,7 @@ func TestMultiSpherePoint_New(t *testing.T) {
 
 func TestLineString_New(t *testing.T) {
 	coords := []Coordinate{{0, 0}, {1, 1}, {2, 2}}
-	ls := NewLineString(coords)
+	ls := NewLineString(coords...)
 
 	if ls.Type != "LineString" {
 		t.Errorf("LineString Type: got %s, want 'LineString'", ls.Type)
@@ -151,8 +151,8 @@ func TestLineString_New(t *testing.T) {
 // --- MultiLineString tests ---
 
 func TestMultiLineString_New(t *testing.T) {
-	ls1 := *NewLineString([]Coordinate{{0, 0}, {1, 1}})
-	ls2 := *NewLineString([]Coordinate{{2, 2}, {3, 3}})
+	ls1 := *NewLineString([]Coordinate{{0, 0}, {1, 1}}...)
+	ls2 := *NewLineString([]Coordinate{{2, 2}, {3, 3}}...)
 
 	mls := NewMultiLineString(ls1, ls2)
 
@@ -252,7 +252,7 @@ func TestCollection_AddMultiPoint(t *testing.T) {
 
 func TestCollection_AddLineString(t *testing.T) {
 	gc := NewGeoCollection()
-	ls := *NewLineString([]Coordinate{{0, 0}, {1, 1}})
+	ls := *NewLineString([]Coordinate{{0, 0}, {1, 1}}...)
 
 	gc.AddLineString(ls)
 
@@ -288,7 +288,7 @@ func TestCollection_AddMultiPolygon(t *testing.T) {
 func TestCollection_MultipleAdds(t *testing.T) {
 	gc := NewGeoCollection()
 	p := *NewSpherePoint(116.46, 39.92)
-	ls := *NewLineString([]Coordinate{{0, 0}, {1, 1}})
+	ls := *NewLineString([]Coordinate{{0, 0}, {1, 1}}...)
 
 	gc.AddPoint(p)
 	gc.AddLineString(ls)
