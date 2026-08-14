@@ -7,6 +7,8 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
+type GPS float64
+
 type Wx struct {
 	Age    *bson.Decimal128
 	Time   *int
@@ -14,6 +16,7 @@ type Wx struct {
 	Third  elsetype.ThirdParty
 	Addr   geo.SpherePoint
 	Player geo.FlatPoint
+	Name   elsetype.FullName
 }
 
 type UserInfo struct {
@@ -25,6 +28,7 @@ type UserInfo struct {
 	Ws    []Wx
 	Pass2 [][]int16
 	InWx  Wx `bson:"inWx,inline"`
+	Gps   GPS
 }
 
 //var filter2 = UserInfoDoc.AgeF().
