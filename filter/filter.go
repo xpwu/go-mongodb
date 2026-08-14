@@ -109,7 +109,7 @@ type exprFilter struct {
 
 func (e *exprFilter) ToBsonD() bson.D {
 	return bson.D{{"$expr", bson.D{{e.operator,
-		[]string{e.f1.FullName(), e.f2.FullName()}}}}}
+		bson.A{"$" + e.f1.FullName(), "$" + e.f2.FullName()}}}}}
 }
 
 // CompareByField compare fields from the same document.
