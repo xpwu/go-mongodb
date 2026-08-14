@@ -67,8 +67,8 @@ func (b *batch) ToBsonM() bson.M {
 	return ret
 }
 
-func Batch(u1 Updater, updaters ...Updater) Updater {
-	return &batch{updaters: append([]Updater{u1}, updaters...)}
+func Batch(updaters ...Updater) Updater {
+	return &batch{updaters: updaters}
 }
 
 func PullByFilter(f field.Field, filter filter.Filter) Updater {
