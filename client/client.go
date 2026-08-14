@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"github.com/xpwu/go-mongodb/fields"
 	"github.com/xpwu/go-mongodb/filter"
 	"github.com/xpwu/go-mongodb/index"
 	"github.com/xpwu/go-mongodb/projection"
@@ -96,6 +97,84 @@ func GetLowerFieldRegistry() *bson.Registry {
 		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
 	}
 	r.RegisterTypeEncoder(filterType, bson.ValueEncoderFunc(filterEncoder))
+
+	arrayFilterType := x.TypeFor[fields.ArrayFilter]()
+	arrayFilterEncoder := func(
+		ec bson.EncodeContext,
+		vw bson.ValueWriter,
+		val reflect.Value,
+	) error {
+		// All encoder implementations should check that val is valid and is of
+		// the correct type before proceeding.
+		if !val.IsValid() || val.Type() != arrayFilterType {
+			return bson.ValueEncoderError{
+				Name:     "arrayFilterEncoder",
+				Types:    []reflect.Type{arrayFilterType},
+				Received: val,
+			}
+		}
+
+		v := val.Interface().(fields.ArrayFilter).ToBsonD()
+		enc, err := ec.LookupEncoder(reflect.TypeOf(v))
+		if err != nil {
+			return err
+		}
+
+		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
+	}
+	r.RegisterTypeEncoder(arrayFilterType, bson.ValueEncoderFunc(arrayFilterEncoder))
+
+	virValueType := x.TypeFor[fields.VirValue]()
+	virValueEncoder := func(
+		ec bson.EncodeContext,
+		vw bson.ValueWriter,
+		val reflect.Value,
+	) error {
+		// All encoder implementations should check that val is valid and is of
+		// the correct type before proceeding.
+		if !val.IsValid() || val.Type() != virValueType {
+			return bson.ValueEncoderError{
+				Name:     "virValueEncoder",
+				Types:    []reflect.Type{virValueType},
+				Received: val,
+			}
+		}
+
+		v := val.Interface().(fields.VirValue).ToBsonD()
+		enc, err := ec.LookupEncoder(reflect.TypeOf(v))
+		if err != nil {
+			return err
+		}
+
+		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
+	}
+	r.RegisterTypeEncoder(virValueType, bson.ValueEncoderFunc(virValueEncoder))
+
+	virPosType := x.TypeFor[fields.VirPos]()
+	virPosEncoder := func(
+		ec bson.EncodeContext,
+		vw bson.ValueWriter,
+		val reflect.Value,
+	) error {
+		// All encoder implementations should check that val is valid and is of
+		// the correct type before proceeding.
+		if !val.IsValid() || val.Type() != virPosType {
+			return bson.ValueEncoderError{
+				Name:     "virPosEncoder",
+				Types:    []reflect.Type{virPosType},
+				Received: val,
+			}
+		}
+
+		v := val.Interface().(fields.VirPos).ToBsonD()
+		enc, err := ec.LookupEncoder(reflect.TypeOf(v))
+		if err != nil {
+			return err
+		}
+
+		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
+	}
+	r.RegisterTypeEncoder(virPosType, bson.ValueEncoderFunc(virPosEncoder))
 
 	keyType := x.TypeFor[index.Key]()
 	keyEncoder := func(
