@@ -7,6 +7,7 @@ import (
 	"github.com/xpwu/go-mongodb/index"
 	"github.com/xpwu/go-mongodb/projection"
 	"github.com/xpwu/go-mongodb/updater"
+	"github.com/xpwu/go-mongodb/x"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"sync/atomic"
 )
@@ -344,11 +345,11 @@ func (a *arrayBaseField[T, ElemField]) PopLast() updater.Updater {
 }
 
 func (a *arrayBaseField[T, ElemField]) AddEach(values []T) updater.Updater {
-	return updater.New(a, "$addToSet", bson.M{"$each": values})
+	return updater.New(a, "$addToSet", bson.M{"$each": x.ToBsonA(values)})
 }
 
 func (a *arrayBaseField[T, ElemField]) RemoveValues(values []T) updater.Updater {
-	return updater.New(a, "$pullAll", values)
+	return updater.New(a, "$pullAll", x.ToBsonA(values))
 }
 
 func (a *arrayBaseField[T, ElemField]) RemoveVirValue(f func(sameElem ElemField) VirValue) updater.Updater {
@@ -357,13 +358,13 @@ func (a *arrayBaseField[T, ElemField]) RemoveVirValue(f func(sameElem ElemField)
 }
 
 func (a *arrayBaseField[T, ElemField]) Push(values []T) updater.Updater {
-	return updater.New(a, "$push", values)
+	return updater.New(a, "$push", x.ToBsonA(values))
 }
 
 func (a *arrayBaseField[T, ElemField]) PushWith(values []T,
 	f func(elem ElemField) *updater.PushModifier) updater.Updater {
 
-	return updater.PushByModifier(a, f(a.newElemField("")), values)
+	return updater.PushByModifier(a, f(a.newElemField("")), x.ToBsonA(values))
 }
 
 func (a *arrayBaseField[T, ElemField]) AnyElemMeet(f func(anyElem ElemField) filter.Filter) filter.Filter {
@@ -380,7 +381,7 @@ func (a *arrayBaseField[T, ElemField]) SameElemMeet(f func(theOne ElemField) fil
 }
 
 func (a *arrayBaseField[T, ElemField]) CoverValues(values []T) filter.Filter {
-	return filter.New(a, "$all", values)
+	return filter.New(a, "$all", x.ToBsonA(values))
 }
 
 func (a *arrayBaseField[T, ElemField]) CoverVirValues(f func(sameElem ElemField) []VirValue) filter.Filter {
