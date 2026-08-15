@@ -15,7 +15,7 @@ import (
 
 type WxField interface {
 	field.Field
-	filter.ComparableFilter[Wx]
+	filter.BaseFilter[Wx]
 	updater.BaseUpdater[Wx]
 	AgeF() fields.Decimal128Field
 	TimeF() fields.IntField

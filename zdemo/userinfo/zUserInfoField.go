@@ -12,7 +12,7 @@ import (
 
 type UserInfoField interface {
 	field.Field
-	filter.ComparableFilter[UserInfo]
+	filter.BaseFilter[UserInfo]
 	updater.BaseUpdater[UserInfo]
 	IDF() fields.StringField
 	LoginF() fields.IntField

@@ -13,7 +13,7 @@ import (
 
 type ThirdPartyField interface {
 	field.Field
-	filter.ComparableFilter[elsetype.ThirdParty]
+	filter.BaseFilter[elsetype.ThirdParty]
 	updater.BaseUpdater[elsetype.ThirdParty]
 	TF() fields.Float64Field
 	TmF() fields.IntegerField[elsetype.TimeType]
