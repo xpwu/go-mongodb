@@ -186,6 +186,26 @@ cli := client.MustGet(cfg, opt) // Builder 和 client 必须使用同一个 opti
 > ⚠️ **注意**：如果使用了 `xopt.Option`，`StructFieldBuilder` 和 `client` 必须使用同一个 option 实例，否则字段名可能不匹配，导致查询或更新失败。
 
 
+### 7. 自定义类型
+
+当你的结构体中包含非基础类型（如自定义枚举、第三方库类型）时，需要额外处理编解码和字段生成。
+
+#### 编解码自定义类型
+
+有两种方式让 MongoDB 正确编解码你的自定义类型：
+
+- **通过 Registry 注册**：使用 `client.GetLowerFieldRegistry()` 或 `client.GetPreserveFieldRegistry()` 
+获取内置的 `*bson.Registry`，通过官方 driver 的注册接口添加自定义的 `ValueEncoder` / `ValueDecoder`，
+最后通过 `xopt.WithRegistry()` 设置到 client 中。
+- **实现 Marshaler 接口**：在自定义类型上直接实现 `bson.Marshaler` 和 `bson.Unmarshaler` 接口，
+自行管理编解码逻辑，无需任何额外注册。如果同时使用了两种方式，接口方式的优先级更高。
+
+#### 生成自定义字段 Field
+
+如果你需要为自定义类型生成特定的 `Field` 类型及其查询/更新方法（例如自定义的时间范围类型、枚举类型），
+则需要编写对应的 `Field` 结构体及 `NewXxxField` 构造函数，然后在 `StructFieldBuilder` 中通过 `RegisterType` 
+注册该 Field。注册后，生成的代码中对应字段就会使用你定义的 `Field` 类型。
+
 ## License
 
 [MIT](LICENSE)
