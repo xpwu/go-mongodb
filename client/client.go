@@ -19,28 +19,19 @@ import (
 	"time"
 )
 
-func GetPreserveFieldRegistry(bsonOpts *options.BSONOptions) (r *bson.Registry, err error) {
-	r = GetLowerFieldRegistry()
+func GetPreserveFieldRegistry(bsonOpts *options.BSONOptions) *bson.Registry {
+	structCodec := NewPreserveStructCodec(bsonOpts)
 
-	structCodec, err := NewPreserveStructCodec(r)
-	if err != nil {
-		return nil, err
-	}
-
-	if bsonOpts != nil {
-		structCodec.ZeroStructs = bsonOpts.ZeroStructs
-		structCodec.OmitZeroStruct = bsonOpts.OmitZeroStruct
-		structCodec.OmitEmpty = bsonOpts.OmitEmpty
-		structCodec.ErrorOnInlineDuplicates = bsonOpts.ErrorOnInlineDuplicates
-		structCodec.UseJSONStructTags = bsonOpts.UseJSONStructTags
-		structCodec.ZeroMaps = bsonOpts.ZeroMaps
-		structCodec.UseLocalTimeZone = bsonOpts.UseLocalTimeZone
-	}
-
+	r := GetLowerFieldRegistry()
 	r.RegisterKindEncoder(reflect.Struct, structCodec)
 	r.RegisterKindDecoder(reflect.Struct, structCodec)
 
-	return r, nil
+	return r
+}
+
+func implements(val reflect.Value, ty reflect.Type) bool {
+	return val.Type().Implements(ty) ||
+		val.Kind() == reflect.Ptr && val.Type().Elem().Implements(ty)
 }
 
 func GetLowerFieldRegistry() *bson.Registry {
@@ -54,7 +45,7 @@ func GetLowerFieldRegistry() *bson.Registry {
 	) error {
 		// All encoder implementations should check that val is valid and is of
 		// the correct type before proceeding.
-		if !val.IsValid() || val.Type() != updaterType {
+		if !val.IsValid() || !implements(val, updaterType) {
 			return bson.ValueEncoderError{
 				Name:     "updaterEncoder",
 				Types:    []reflect.Type{updaterType},
@@ -70,7 +61,7 @@ func GetLowerFieldRegistry() *bson.Registry {
 
 		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
 	}
-	r.RegisterTypeEncoder(updaterType, bson.ValueEncoderFunc(updaterEncoder))
+	r.RegisterInterfaceEncoder(updaterType, bson.ValueEncoderFunc(updaterEncoder))
 
 	filterType := x.TypeFor[filter.Filter]()
 	filterEncoder := func(
@@ -80,7 +71,7 @@ func GetLowerFieldRegistry() *bson.Registry {
 	) error {
 		// All encoder implementations should check that val is valid and is of
 		// the correct type before proceeding.
-		if !val.IsValid() || val.Type() != filterType {
+		if !val.IsValid() || !implements(val, filterType) {
 			return bson.ValueEncoderError{
 				Name:     "filterEncoder",
 				Types:    []reflect.Type{filterType},
@@ -96,7 +87,33 @@ func GetLowerFieldRegistry() *bson.Registry {
 
 		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
 	}
-	r.RegisterTypeEncoder(filterType, bson.ValueEncoderFunc(filterEncoder))
+	r.RegisterInterfaceEncoder(filterType, bson.ValueEncoderFunc(filterEncoder))
+
+	pFilterType := x.TypeFor[filter.PartialIndexFilter]()
+	pFilterEncoder := func(
+		ec bson.EncodeContext,
+		vw bson.ValueWriter,
+		val reflect.Value,
+	) error {
+		// All encoder implementations should check that val is valid and is of
+		// the correct type before proceeding.
+		if !val.IsValid() || !implements(val, pFilterType) {
+			return bson.ValueEncoderError{
+				Name:     "partialIndexFilterEncoder",
+				Types:    []reflect.Type{pFilterType},
+				Received: val,
+			}
+		}
+
+		v := val.Interface().(filter.PartialIndexFilter).ToBsonD()
+		enc, err := ec.LookupEncoder(reflect.TypeOf(v))
+		if err != nil {
+			return err
+		}
+
+		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
+	}
+	r.RegisterInterfaceEncoder(pFilterType, bson.ValueEncoderFunc(pFilterEncoder))
 
 	arrayFilterType := x.TypeFor[fields.ArrayFilter]()
 	arrayFilterEncoder := func(
@@ -106,7 +123,7 @@ func GetLowerFieldRegistry() *bson.Registry {
 	) error {
 		// All encoder implementations should check that val is valid and is of
 		// the correct type before proceeding.
-		if !val.IsValid() || val.Type() != arrayFilterType {
+		if !val.IsValid() || !implements(val, arrayFilterType) {
 			return bson.ValueEncoderError{
 				Name:     "arrayFilterEncoder",
 				Types:    []reflect.Type{arrayFilterType},
@@ -122,7 +139,7 @@ func GetLowerFieldRegistry() *bson.Registry {
 
 		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
 	}
-	r.RegisterTypeEncoder(arrayFilterType, bson.ValueEncoderFunc(arrayFilterEncoder))
+	r.RegisterInterfaceEncoder(arrayFilterType, bson.ValueEncoderFunc(arrayFilterEncoder))
 
 	virValueType := x.TypeFor[fields.VirValue]()
 	virValueEncoder := func(
@@ -132,7 +149,7 @@ func GetLowerFieldRegistry() *bson.Registry {
 	) error {
 		// All encoder implementations should check that val is valid and is of
 		// the correct type before proceeding.
-		if !val.IsValid() || val.Type() != virValueType {
+		if !val.IsValid() || !implements(val, virValueType) {
 			return bson.ValueEncoderError{
 				Name:     "virValueEncoder",
 				Types:    []reflect.Type{virValueType},
@@ -148,7 +165,7 @@ func GetLowerFieldRegistry() *bson.Registry {
 
 		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
 	}
-	r.RegisterTypeEncoder(virValueType, bson.ValueEncoderFunc(virValueEncoder))
+	r.RegisterInterfaceEncoder(virValueType, bson.ValueEncoderFunc(virValueEncoder))
 
 	virPosType := x.TypeFor[fields.VirPos]()
 	virPosEncoder := func(
@@ -158,7 +175,7 @@ func GetLowerFieldRegistry() *bson.Registry {
 	) error {
 		// All encoder implementations should check that val is valid and is of
 		// the correct type before proceeding.
-		if !val.IsValid() || val.Type() != virPosType {
+		if !val.IsValid() || !implements(val, virPosType) {
 			return bson.ValueEncoderError{
 				Name:     "virPosEncoder",
 				Types:    []reflect.Type{virPosType},
@@ -174,7 +191,7 @@ func GetLowerFieldRegistry() *bson.Registry {
 
 		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
 	}
-	r.RegisterTypeEncoder(virPosType, bson.ValueEncoderFunc(virPosEncoder))
+	r.RegisterInterfaceEncoder(virPosType, bson.ValueEncoderFunc(virPosEncoder))
 
 	keyType := x.TypeFor[index.Key]()
 	keyEncoder := func(
@@ -184,7 +201,7 @@ func GetLowerFieldRegistry() *bson.Registry {
 	) error {
 		// All encoder implementations should check that val is valid and is of
 		// the correct type before proceeding.
-		if !val.IsValid() || val.Type() != keyType {
+		if !val.IsValid() || !implements(val, keyType) {
 			return bson.ValueEncoderError{
 				Name:     "keyEncoder",
 				Types:    []reflect.Type{keyType},
@@ -200,7 +217,7 @@ func GetLowerFieldRegistry() *bson.Registry {
 
 		return enc.EncodeValue(ec, vw, reflect.ValueOf(v))
 	}
-	r.RegisterTypeEncoder(keyType, bson.ValueEncoderFunc(keyEncoder))
+	r.RegisterInterfaceEncoder(keyType, bson.ValueEncoderFunc(keyEncoder))
 
 	incType := x.TypeFor[projection.IncludeBuilder]()
 	incEncoder := func(
@@ -218,7 +235,14 @@ func GetLowerFieldRegistry() *bson.Registry {
 			}
 		}
 
-		v := val.Interface().(*projection.IncludeBuilder).Build()
+		var incp *projection.IncludeBuilder
+		switch v := val.Interface().(type) {
+		case projection.IncludeBuilder:
+			incp = &v
+		case *projection.IncludeBuilder:
+			incp = v
+		}
+		v := incp.Build()
 		enc, err := ec.LookupEncoder(reflect.TypeOf(v))
 		if err != nil {
 			return err
@@ -244,7 +268,14 @@ func GetLowerFieldRegistry() *bson.Registry {
 			}
 		}
 
-		v := val.Interface().(*projection.ExcludeBuilder).Build()
+		var excp *projection.ExcludeBuilder
+		switch v := val.Interface().(type) {
+		case projection.ExcludeBuilder:
+			excp = &v
+		case *projection.ExcludeBuilder:
+			excp = v
+		}
+		v := excp.Build()
 		enc, err := ec.LookupEncoder(reflect.TypeOf(v))
 		if err != nil {
 			return err
@@ -270,10 +301,7 @@ func NewClient(config *Config, opts ...xopt.Option) (client *mongo.Client, err e
 	}
 	if opt.Registry == nil {
 		if opt.PreserveField {
-			opt.Registry, err = GetPreserveFieldRegistry(opt.BsonOpts)
-			if err != nil {
-				return nil, err
-			}
+			opt.Registry = GetPreserveFieldRegistry(opt.BsonOpts)
 		} else {
 			opt.Registry = GetLowerFieldRegistry()
 		}

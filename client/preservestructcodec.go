@@ -7,12 +7,15 @@
 package client
 
 import (
+	"encoding"
 	"errors"
 	"fmt"
 	"github.com/xpwu/go-mongodb/x"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -52,6 +55,102 @@ func (de *DecodeError) Keys() []string {
 // mapElementsEncoder handles encoding of the values of an inline  map.
 type mapElementsEncoder interface {
 	encodeMapElements(bson.EncodeContext, bson.DocumentWriter, reflect.Value, func(string) bool) error
+}
+
+// mapCodec is the Codec used for map values.
+type mapCodec struct {
+	StringifyMapKeysWithFmt bool
+}
+
+// encodeMapElements handles encoding of the values of a map. The collisionFn returns
+// true if the provided key exists, this is mainly used for inline maps in the
+// struct codec.
+func (mc *mapCodec) encodeMapElements(ec bson.EncodeContext, dw bson.DocumentWriter, val reflect.Value, collisionFn func(string) bool) error {
+	elemType := val.Type().Elem()
+	encoder, err := ec.LookupEncoder(elemType)
+	if err != nil && elemType.Kind() != reflect.Interface {
+		return err
+	}
+
+	keys := val.MapKeys()
+	for _, key := range keys {
+		keyStr, err := mc.encodeKey(key, mc.StringifyMapKeysWithFmt)
+		if err != nil {
+			return err
+		}
+
+		if collisionFn != nil && collisionFn(keyStr) {
+			return fmt.Errorf("Key %s of inlined map conflicts with a struct field name", key)
+		}
+
+		currEncoder, currVal, lookupErr := lookupElementEncoder(ec, encoder, val.MapIndex(key))
+		if lookupErr != nil && !errors.Is(lookupErr, errInvalidValue) {
+			return lookupErr
+		}
+
+		vw, err := dw.WriteDocumentElement(keyStr)
+		if err != nil {
+			return err
+		}
+
+		if errors.Is(lookupErr, errInvalidValue) {
+			err = vw.WriteNull()
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
+		err = currEncoder.EncodeValue(ec, vw, currVal)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (mc *mapCodec) encodeKey(val reflect.Value, encodeKeysWithStringer bool) (string, error) {
+	if encodeKeysWithStringer {
+		return fmt.Sprint(val), nil
+	}
+
+	// keys of any string type are used directly
+	if val.Kind() == reflect.String {
+		return val.String(), nil
+	}
+	// KeyMarshalers are marshaled
+	if km, ok := val.Interface().(bson.KeyMarshaler); ok {
+		if val.Kind() == reflect.Ptr && val.IsNil() {
+			return "", nil
+		}
+		buf, err := km.MarshalKey()
+		if err == nil {
+			return buf, nil
+		}
+		return "", err
+	}
+	// keys implement encoding.TextMarshaler are marshaled.
+	if km, ok := val.Interface().(encoding.TextMarshaler); ok {
+		if val.Kind() == reflect.Ptr && val.IsNil() {
+			return "", nil
+		}
+
+		buf, err := km.MarshalText()
+		if err != nil {
+			return "", err
+		}
+
+		return string(buf), nil
+	}
+
+	switch val.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return strconv.FormatInt(val.Int(), 10), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uintptr:
+		return strconv.FormatUint(val.Uint(), 10), nil
+	}
+	return "", fmt.Errorf("unsupported key type: %v", val.Type())
 }
 
 var emptyValue = reflect.Value{}
@@ -184,24 +283,27 @@ var (
 )
 
 // NewPreserveStructCodec returns a StructCodec that uses x.ParseStructTags for struct tag parsing.
-func NewPreserveStructCodec(r *bson.Registry) (codec *PreserveStructCodec, err error) {
-	var elemEncoder mapElementsEncoder = nil
-	if r != nil {
-		mapCodec, err := r.LookupEncoder(x.TypeFor[map[string]interface{}]())
-		if err != nil {
-			return nil, err
-		}
-		ok := true
-		elemEncoder, ok = mapCodec.(mapElementsEncoder)
-		if !ok {
-			return nil, errors.New("can NOT find mapElementsEncoder for NewPreserveStructCodec")
-		}
+func NewPreserveStructCodec(bsonOpts *options.BSONOptions) *PreserveStructCodec {
+	mapC := &mapCodec{}
+
+	structCodec := &PreserveStructCodec{
+		inlineMapEncoder:                 mapC,
+		overwriteDuplicatedInlinedFields: true,
 	}
 
-	return &PreserveStructCodec{
-		inlineMapEncoder:                 elemEncoder,
-		overwriteDuplicatedInlinedFields: true,
-	}, nil
+	if bsonOpts != nil {
+		mapC.StringifyMapKeysWithFmt = bsonOpts.StringifyMapKeysWithFmt
+
+		structCodec.ZeroStructs = bsonOpts.ZeroStructs
+		structCodec.OmitZeroStruct = bsonOpts.OmitZeroStruct
+		structCodec.OmitEmpty = bsonOpts.OmitEmpty
+		structCodec.ErrorOnInlineDuplicates = bsonOpts.ErrorOnInlineDuplicates
+		structCodec.UseJSONStructTags = bsonOpts.UseJSONStructTags
+		structCodec.ZeroMaps = bsonOpts.ZeroMaps
+		structCodec.UseLocalTimeZone = bsonOpts.UseLocalTimeZone
+	}
+
+	return structCodec
 }
 
 // EncodeValue handles encoding generic struct types.
