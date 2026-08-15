@@ -1,6 +1,7 @@
 package fields
 
 import (
+	"github.com/xpwu/go-mongodb/x"
 	"testing"
 
 	"github.com/xpwu/go-mongodb/filter"
@@ -121,7 +122,7 @@ func TestArrayField_AddEach(t *testing.T) {
 	u := af.AddEach([]int{1, 2, 3})
 	got := u.ToBsonM()
 
-	want := bson.M{"$addToSet": bson.M{"tags": bson.M{"$each": []int{1, 2, 3}}}}
+	want := bson.M{"$addToSet": bson.M{"tags": bson.M{"$each": x.ToBsonA([]int{1, 2, 3})}}}
 	if !bsonMEqual(got, want) {
 		t.Errorf("AddEach: got %v, want %v", got, want)
 	}
@@ -133,7 +134,7 @@ func TestArrayField_AddEach_String(t *testing.T) {
 	u := af.AddEach([]string{"a", "b"})
 	got := u.ToBsonM()
 
-	want := bson.M{"$addToSet": bson.M{"tags": bson.M{"$each": []string{"a", "b"}}}}
+	want := bson.M{"$addToSet": bson.M{"tags": bson.M{"$each": x.ToBsonA([]string{"a", "b"})}}}
 	if !bsonMEqual(got, want) {
 		t.Errorf("AddEach(string): got %v, want %v", got, want)
 	}
@@ -145,7 +146,7 @@ func TestArrayField_AddEach_Empty(t *testing.T) {
 	u := af.AddEach([]int{})
 	got := u.ToBsonM()
 
-	want := bson.M{"$addToSet": bson.M{"tags": bson.M{"$each": []int{}}}}
+	want := bson.M{"$addToSet": bson.M{"tags": bson.M{"$each": x.ToBsonA([]int{})}}}
 	if !bsonMEqual(got, want) {
 		t.Errorf("AddEach(empty): got %v, want %v", got, want)
 	}
@@ -159,7 +160,7 @@ func TestArrayField_RemoveValues(t *testing.T) {
 	u := af.RemoveValues([]int{0, 5})
 	got := u.ToBsonM()
 
-	want := bson.M{"$pullAll": bson.M{"scores": []int{0, 5}}}
+	want := bson.M{"$pullAll": bson.M{"scores": x.ToBsonA([]int{0, 5})}}
 	if !bsonMEqual(got, want) {
 		t.Errorf("RemoveValues: got %v, want %v", got, want)
 	}
@@ -171,7 +172,7 @@ func TestArrayField_RemoveValues_String(t *testing.T) {
 	u := af.RemoveValues([]string{"deleted", "removed"})
 	got := u.ToBsonM()
 
-	want := bson.M{"$pullAll": bson.M{"tags": []string{"deleted", "removed"}}}
+	want := bson.M{"$pullAll": bson.M{"tags": x.ToBsonA([]string{"deleted", "removed"})}}
 	if !bsonMEqual(got, want) {
 		t.Errorf("RemoveValues(string): got %v, want %v", got, want)
 	}
@@ -185,7 +186,7 @@ func TestArrayField_Push(t *testing.T) {
 	u := af.Push([]int{90, 85, 88})
 	got := u.ToBsonM()
 
-	want := bson.M{"$push": bson.M{"scores": []int{90, 85, 88}}}
+	want := bson.M{"$push": bson.M{"scores": x.ToBsonA([]int{90, 85, 88})}}
 	if !bsonMEqual(got, want) {
 		t.Errorf("Push: got %v, want %v", got, want)
 	}
@@ -197,7 +198,7 @@ func TestArrayField_Push_Single(t *testing.T) {
 	u := af.Push([]string{"newTag"})
 	got := u.ToBsonM()
 
-	want := bson.M{"$push": bson.M{"tags": []string{"newTag"}}}
+	want := bson.M{"$push": bson.M{"tags": x.ToBsonA([]string{"newTag"})}}
 	if !bsonMEqual(got, want) {
 		t.Errorf("Push(single): got %v, want %v", got, want)
 	}
@@ -236,7 +237,7 @@ func TestArrayField_PushWith_SortDesc(t *testing.T) {
 	// elem.FullName() = "" when name is ""
 	// DescWith: p.sort = bson.M{"": -1}
 	want := bson.M{"$push": bson.M{"scores": bson.M{
-		"$each": []int{8, 7, 6},
+		"$each": x.ToBsonA([]int{8, 7, 6}),
 		"$sort": bson.M{"": -1},
 	}}}
 	if !bsonMEqual(got, want) {
@@ -253,7 +254,7 @@ func TestArrayField_PushWith_Position(t *testing.T) {
 	got := u.ToBsonM()
 
 	want := bson.M{"$push": bson.M{"scores": bson.M{
-		"$each":     []int{1, 2},
+		"$each":     x.ToBsonA([]int{1, 2}),
 		"$position": 0,
 	}}}
 	if !bsonMEqual(got, want) {
@@ -270,7 +271,7 @@ func TestArrayField_PushWith_Slice(t *testing.T) {
 	got := u.ToBsonM()
 
 	want := bson.M{"$push": bson.M{"scores": bson.M{
-		"$each":  []int{1, 2, 3},
+		"$each":  x.ToBsonA([]int{1, 2, 3}),
 		"$slice": 5,
 	}}}
 	if !bsonMEqual(got, want) {
@@ -312,7 +313,7 @@ func TestArrayField_SameElemMeet_And(t *testing.T) {
 	want := bson.D{{"dim_cm", bson.D{{"$elemMatch",
 		bson.D{{"$gt", 22}, {"$lt", 30}},
 	}}}}
-	if !bsonDEqual(got, want) {
+	if !bsonMEqual(x.DtoMDeeply(got), x.DtoMDeeply(want)) {
 		t.Errorf("SameElemMeet(And): \ngot  %v, \nwant %v", got, want)
 	}
 }
@@ -355,7 +356,7 @@ func TestArrayField_CoverValues(t *testing.T) {
 	f := af.CoverValues([]int{1, 2})
 	got := f.ToBsonD()
 
-	want := bson.D{{"tags", bson.D{{"$all", []int{1, 2}}}}}
+	want := bson.D{{"tags", bson.D{{"$all", x.ToBsonA([]int{1, 2})}}}}
 	if !bsonDEqual(got, want) {
 		t.Errorf("CoverValues: got %v, want %v", got, want)
 	}
