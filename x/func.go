@@ -1,6 +1,8 @@
 package x
 
 import (
+	"crypto/sha256"
+	"encoding/base64"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"reflect"
 	"strings"
@@ -117,4 +119,10 @@ func MtoDDeeply(m bson.M) bson.D {
 	}
 
 	return ret
+}
+
+func Base6408(s string) string {
+	sha256v := sha256.Sum256([]byte(s))
+	r := base64.StdEncoding.EncodeToString(sha256v[:])
+	return r[0:8]
 }
