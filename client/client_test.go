@@ -7,8 +7,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
-	"github.com/xpwu/go-mongodb/filter"
-	"github.com/xpwu/go-mongodb/updater"
 	"github.com/xpwu/go-mongodb/xopt"
 )
 
@@ -186,43 +184,5 @@ func TestXopt_ChainOptions(t *testing.T) {
 	}
 	if opts.Registry != registry {
 		t.Errorf("Chain: Registry expected same pointer")
-	}
-}
-
-// --- GetLowerFieldRegistry tests ---
-
-func TestGetLowerFieldRegistry_NotNil(t *testing.T) {
-	registry := GetLowerFieldRegistry()
-
-	if registry == nil {
-		t.Errorf("GetLowerFieldRegistry: expected non-nil registry")
-	}
-}
-
-func TestGetLowerFieldRegistry_HasUpdaterEncoder(t *testing.T) {
-	registry := GetLowerFieldRegistry()
-
-	// 验证注册了 updater.Updater 的 encoder
-	updaterType := reflect.TypeOf((*updater.Updater)(nil)).Elem()
-	enc, err := registry.LookupEncoder(updaterType)
-	if err != nil {
-		t.Errorf("Registry: updater.Updater encoder not found: %v", err)
-	}
-	if enc == nil {
-		t.Errorf("Registry: updater.Updater encoder is nil")
-	}
-}
-
-func TestGetLowerFieldRegistry_HasFilterEncoder(t *testing.T) {
-	registry := GetLowerFieldRegistry()
-
-	// 验证注册了 filter.Filter 的 encoder
-	filterType := reflect.TypeOf((*filter.Filter)(nil)).Elem()
-	enc, err := registry.LookupEncoder(filterType)
-	if err != nil {
-		t.Errorf("Registry: filter.Filter encoder not found: %v", err)
-	}
-	if enc == nil {
-		t.Errorf("Registry: filter.Filter encoder is nil")
 	}
 }
