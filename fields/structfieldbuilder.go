@@ -649,7 +649,11 @@ import ({{- range .Imports}}
 
 type {{.Name}}Field interface {
 	{{.MongoAlias}}Field
+{{- if .EqualAble}}
 	{{.FilterAlias}}ComparableFilter[{{.TypePkg}}{{.Name}}]
+{{- else}}
+	{{.FilterAlias}}BaseFilter[{{.TypePkg}}{{.Name}}]
+{{- end}}
 	{{.UpdaterAlias}}BaseUpdater[{{.TypePkg}}{{.Name}}]
 {{- range .Fields}}
 	{{.MethodName}}F() {{.FieldName}}
@@ -805,6 +809,7 @@ func (b *StructFieldBuilder) buildStruct(t reflect.Type) (ft TypeInfo, ok bool) 
 		Imports      []importTemp
 		Fields       []Field
 		Inlines      []Inline
+		EqualAble    bool
 	}
 
 	oldCtx := b.structCtx
@@ -892,6 +897,7 @@ func (b *StructFieldBuilder) buildStruct(t reflect.Type) (ft TypeInfo, ok bool) 
 	}
 
 	s.Imports = thisImports.all()
+	s.EqualAble = equalAble
 
 	if err := os.MkdirAll(thisDir, 0755); err != nil {
 		panic(err)
