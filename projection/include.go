@@ -13,9 +13,29 @@ import (
 // way users construct array projections. The package-level IncludeWithXxx
 // functions are lower-level alternatives for dynamic field paths.
 type Inclusion[ElemField field.Field] interface {
+	// ProjectWithSlice returns a projection that limits the array to the first n elements
+	// using the $slice operator. Equivalent to MongoDB's {"field": {"$slice": n}}.
 	ProjectWithSlice(n int) *IncludeBuilder
+
+	// ProjectWithSliceRange returns a projection that skips past elements and limits
+	// the array using the $slice operator. Equivalent to MongoDB's {"field": {"$slice": [skip, limit]}}.
 	ProjectWithSliceRange(skip, limit int) *IncludeBuilder
+
+	// ProjectWithElemMatch returns a projection that includes only the first array element
+	// satisfying the given filter, using the $elemMatch operator.
+	// The filter function receives the element field and returns a condition,
+	// e.g. field.Eq("vip") or field.Gte(100).
 	ProjectWithElemMatch(f func(theOne ElemField) filter.Filter) *IncludeBuilder
+
+	// ProjectWithFirstMatch returns a projection using the positional $ operator,
+	// which resolves to the first array element that matches the query filter.
+	//
+	// The array field must appear in the corresponding find/filter document
+	// for the $ operator to identify which element to project. Example:
+	//
+	//	filter:  tags.Eq("vip")
+	//	projection: tags.ProjectWithFirstMatch()
+	//	result: {"tags.$": 1}  // returns the first "vip" tag
 	ProjectWithFirstMatch() *IncludeBuilder
 }
 
