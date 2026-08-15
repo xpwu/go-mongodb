@@ -1,6 +1,7 @@
 package x
 
 import (
+	"go.mongodb.org/mongo-driver/v2/bson"
 	"reflect"
 	"strings"
 )
@@ -62,4 +63,58 @@ func CapitalizeASCII(s string) string {
 		b[0] -= 32
 	}
 	return string(b)
+}
+
+func ToBsonA[T any](docs []T) bson.A {
+	a := make(bson.A, len(docs))
+	for i, d := range docs {
+		a[i] = d
+	}
+	return a
+}
+
+func DtoM(doc bson.D) bson.M {
+	ret := bson.M{}
+	for _, e := range doc {
+		ret[e.Key] = e.Value
+	}
+
+	return ret
+}
+
+func DtoMDeeply(doc bson.D) bson.M {
+	ret := bson.M{}
+	for _, e := range doc {
+		if ed, ok := e.Value.(bson.D); ok {
+			ret[e.Key] = DtoMDeeply(ed)
+		} else {
+			ret[e.Key] = e.Value
+		}
+	}
+
+	return ret
+}
+
+func MtoDDeeply(m bson.M) bson.D {
+	ret := bson.D{}
+	for k, v := range m {
+		switch vv := v.(type) {
+		case bson.M:
+			ret = append(ret, bson.E{Key: k, Value: MtoDDeeply(vv)})
+		case bson.A:
+			r := bson.A{}
+			for _, a := range vv {
+				if am, ok := a.(bson.M); ok {
+					r = append(r, MtoDDeeply(am))
+				} else {
+					r = append(r, a)
+				}
+			}
+			ret = append(ret, bson.E{Key: k, Value: r})
+		default:
+			ret = append(ret, bson.E{Key: k, Value: v})
+		}
+	}
+
+	return ret
 }
