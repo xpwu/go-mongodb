@@ -1,0 +1,463 @@
+package gen
+
+import (
+	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
+	"fmt"
+	"os"
+	"path"
+	"path/filepath"
+	"reflect"
+	"runtime"
+	"strings"
+	"text/template"
+
+	"github.com/xpwu/go-mongodb/x"
+)
+
+// ─── TypeInfo ───────────────────────────────────────────────
+
+type TypeInfo struct {
+	T         TypeSource
+	Field     typeRef
+	NewField  typeRef
+	EqualAble bool
+}
+
+type typeRef struct {
+	name string
+	pkg  string
+}
+
+func (r typeRef) Name() string    { return r.name }
+func (r typeRef) PkgPath() string { return r.pkg }
+
+// ─── Generator ──────────────────────────────────────────────
+
+type Generator struct {
+	config    *Config
+	imports   *allImports
+	outputDir string
+	targetPkg string
+	typeMap   map[string]TypeInfo
+}
+
+func NewGenerator(config *Config) *Generator {
+	return &Generator{
+		config:    config,
+		outputDir: config.Dir,
+		targetPkg: config.Pkg,
+		typeMap:   make(map[string]TypeInfo),
+	}
+}
+
+func (g *Generator) Generate(ts TypeSource) {
+	g.imports = newAllImports()
+	g.build(ts)
+}
+
+func (g *Generator) build(ts TypeSource) TypeInfo {
+	key := ts.PkgPath() + "." + ts.Name()
+	if info, ok := g.typeMap[key]; ok {
+		return info
+	}
+
+	if info, ok := g.lookupCustom(ts); ok {
+		g.typeMap[key] = info
+		return info
+	}
+
+	if info, ok := g.lookupBuiltinDirect(ts); ok {
+		g.typeMap[key] = info
+		return info
+	}
+
+	var info TypeInfo
+	var ok bool
+
+	switch ts.Kind() {
+	case reflect.Struct:
+		info, ok = g.buildStruct(ts)
+	case reflect.Slice, reflect.Array:
+		info, ok = g.buildSlice(ts)
+	case reflect.Ptr:
+		info, ok = g.buildPtr(ts)
+	default:
+		info, ok = g.buildKind(ts)
+	}
+
+	if !ok {
+		panic(fmt.Errorf("not support type %s.%s (kind=%v)", ts.PkgPath(), ts.Name(), ts.Kind()))
+	}
+
+	g.typeMap[key] = info
+	return info
+}
+
+func (g *Generator) buildPtr(ts TypeSource) (TypeInfo, bool) {
+	elem := ts.Elem()
+	if elem == nil {
+		return TypeInfo{}, false
+	}
+	return g.build(elem), true
+}
+
+// ─── 自定义映射 ─────────────────────────────────────────────
+
+func (g *Generator) lookupCustom(ts TypeSource) (TypeInfo, bool) {
+	key := ts.PkgPath() + "." + ts.Name()
+	entry, ok := g.config.Maps[key]
+	if !ok {
+		return TypeInfo{}, false
+	}
+	return TypeInfo{
+		T:         ts,
+		Field:     typeRef{name: entry.FieldType},
+		NewField:  typeRef{name: entry.NewFunc},
+		EqualAble: true,
+	}, true
+}
+
+// ─── 内置类型硬编码 ─────────────────────────────────────────
+
+func (g *Generator) lookupBuiltinDirect(ts TypeSource) (TypeInfo, bool) {
+	fieldsPkg := "github.com/xpwu/go-mongodb/fields"
+
+	builtins := map[string]TypeInfo{
+		"int":     {T: ts, Field: typeRef{name: "IntField", pkg: fieldsPkg}, NewField: typeRef{name: "NewIntField", pkg: fieldsPkg}, EqualAble: true},
+		"int8":    {T: ts, Field: typeRef{name: "Int8Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt8Field", pkg: fieldsPkg}, EqualAble: true},
+		"int16":   {T: ts, Field: typeRef{name: "Int16Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt16Field", pkg: fieldsPkg}, EqualAble: true},
+		"int32":   {T: ts, Field: typeRef{name: "Int32Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt32Field", pkg: fieldsPkg}, EqualAble: true},
+		"int64":   {T: ts, Field: typeRef{name: "Int64Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt64Field", pkg: fieldsPkg}, EqualAble: true},
+		"uint":    {T: ts, Field: typeRef{name: "UintField", pkg: fieldsPkg}, NewField: typeRef{name: "NewUintField", pkg: fieldsPkg}, EqualAble: true},
+		"uint8":   {T: ts, Field: typeRef{name: "Uint8Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint8Field", pkg: fieldsPkg}, EqualAble: true},
+		"uint16":  {T: ts, Field: typeRef{name: "Uint16Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint16Field", pkg: fieldsPkg}, EqualAble: true},
+		"uint32":  {T: ts, Field: typeRef{name: "Uint32Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint32Field", pkg: fieldsPkg}, EqualAble: true},
+		"uint64":  {T: ts, Field: typeRef{name: "Uint64Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint64Field", pkg: fieldsPkg}, EqualAble: true},
+		"float32": {T: ts, Field: typeRef{name: "Float32Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewFloat32Field", pkg: fieldsPkg}, EqualAble: false},
+		"float64": {T: ts, Field: typeRef{name: "Float64Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewFloat64Field", pkg: fieldsPkg}, EqualAble: false},
+		"string":  {T: ts, Field: typeRef{name: "StringField", pkg: fieldsPkg}, NewField: typeRef{name: "NewStringField", pkg: fieldsPkg}, EqualAble: true},
+		"bool":    {T: ts, Field: typeRef{name: "BoolField", pkg: fieldsPkg}, NewField: typeRef{name: "NewBoolField", pkg: fieldsPkg}, EqualAble: true},
+	}
+
+	if info, ok := builtins[ts.Name()]; ok && ts.PkgPath() == "" {
+		return info, true
+	}
+
+	bsonPkg := "go.mongodb.org/mongo-driver/v2/bson"
+	if ts.PkgPath() == bsonPkg {
+		bsonTypes := map[string]TypeInfo{
+			"ObjectID":   {T: ts, Field: typeRef{name: "ObjectIDField", pkg: fieldsPkg}, NewField: typeRef{name: "NewObjectIDField", pkg: fieldsPkg}, EqualAble: true},
+			"Binary":     {T: ts, Field: typeRef{name: "BinaryField", pkg: fieldsPkg}, NewField: typeRef{name: "NewBinaryField", pkg: fieldsPkg}, EqualAble: true},
+			"Decimal128": {T: ts, Field: typeRef{name: "Decimal128Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewDecimal128Field", pkg: fieldsPkg}, EqualAble: true},
+			"Raw":        {T: ts, Field: typeRef{name: "RawField", pkg: fieldsPkg}, NewField: typeRef{name: "NewRawField", pkg: fieldsPkg}, EqualAble: true},
+			"RawValue":   {T: ts, Field: typeRef{name: "RawValueField", pkg: fieldsPkg}, NewField: typeRef{name: "NewRawValueField", pkg: fieldsPkg}, EqualAble: true},
+			"RawArray":   {T: ts, Field: typeRef{name: "RawArrayField", pkg: fieldsPkg}, NewField: typeRef{name: "NewRawArrayField", pkg: fieldsPkg}, EqualAble: true},
+			"RawElement": {T: ts, Field: typeRef{name: "RawElementField", pkg: fieldsPkg}, NewField: typeRef{name: "NewRawElementField", pkg: fieldsPkg}, EqualAble: true},
+			"DateTime":   {T: ts, Field: typeRef{name: "DateTimeField", pkg: fieldsPkg}, NewField: typeRef{name: "NewDateTimeField", pkg: fieldsPkg}, EqualAble: true},
+			"Timestamp":  {T: ts, Field: typeRef{name: "TimestampField", pkg: fieldsPkg}, NewField: typeRef{name: "NewTimestampField", pkg: fieldsPkg}, EqualAble: true},
+			"M":          {T: ts, Field: typeRef{name: "BsonMField", pkg: fieldsPkg}, NewField: typeRef{name: "NewBsonMField", pkg: fieldsPkg}, EqualAble: true},
+			"A":          {T: ts, Field: typeRef{name: "BsonAField", pkg: fieldsPkg}, NewField: typeRef{name: "NewBsonAField", pkg: fieldsPkg}, EqualAble: true},
+		}
+		if info, ok := bsonTypes[ts.Name()]; ok {
+			return info, true
+		}
+	}
+
+	geoPkg := "github.com/xpwu/go-mongodb/geo"
+	if ts.PkgPath() == geoPkg {
+		geoTypes := map[string]TypeInfo{
+			"SpherePoint": {T: ts, Field: typeRef{name: "SpherePointField", pkg: fieldsPkg}, NewField: typeRef{name: "NewSpherePointField", pkg: fieldsPkg}, EqualAble: true},
+			"FlatPoint":   {T: ts, Field: typeRef{name: "FlatPointField", pkg: fieldsPkg}, NewField: typeRef{name: "NewFlatPointField", pkg: fieldsPkg}, EqualAble: true},
+		}
+		if info, ok := geoTypes[ts.Name()]; ok {
+			return info, true
+		}
+	}
+
+	return TypeInfo{}, false
+}
+
+// ─── buildKind ──────────────────────────────────────────────
+
+func (g *Generator) buildKind(ts TypeSource) (TypeInfo, bool) {
+	fieldsPkg := "github.com/xpwu/go-mongodb/fields"
+
+	typeAlias := ""
+	if ts.PkgPath() != "" {
+		typeAlias = g.imports.add(ts.PkgPath())
+	}
+	typeName := ts.Name()
+	if typeAlias != "" {
+		typeName = typeAlias + "." + ts.Name()
+	}
+
+	switch ts.Kind() {
+	case reflect.Bool:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("ComparableField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewComparableField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Int:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("IntegerField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewIntegerField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Int8:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("IntegerField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewIntegerField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Int16:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("IntegerField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewIntegerField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Int32:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("IntegerField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewIntegerField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Int64:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("IntegerField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewIntegerField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Uint:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("UnIntegerField[%s, int]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewUnIntegerField[%s, int]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Uint8:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("UnIntegerField[%s, int8]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewUnIntegerField[%s, int8]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Uint16:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("UnIntegerField[%s, int16]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewUnIntegerField[%s, int16]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Uint32:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("UnIntegerField[%s, int32]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewUnIntegerField[%s, int32]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Uint64:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("UnIntegerField[%s, int64]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewUnIntegerField[%s, int64]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Float32:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("ComputableField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewComputableField[%s]", typeName), pkg: fieldsPkg}, EqualAble: false}, true
+	case reflect.Float64:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("ComputableField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewComputableField[%s]", typeName), pkg: fieldsPkg}, EqualAble: false}, true
+	case reflect.String:
+		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("LikeStringField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewLikeStringField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	default:
+		return TypeInfo{}, false
+	}
+}
+
+// ─── buildSlice ─────────────────────────────────────────────
+
+func (g *Generator) buildSlice(ts TypeSource) (TypeInfo, bool) {
+	elem := ts.Elem()
+	if elem == nil {
+		return TypeInfo{}, false
+	}
+
+	// 计算维度：数有多少层 Slice/Array 嵌套
+	dim := 0
+	current := ts
+	for current != nil && (current.Kind() == reflect.Slice || current.Kind() == reflect.Array) {
+		dim++
+		current = current.Elem()
+	}
+
+	eft := g.build(elem)
+
+	arrPkg := g.imports.add("github.com/xpwu/go-mongodb/fields")
+
+	arrField := ""
+	if !eft.EqualAble {
+		arrField = arrPkg + ".ArrayField"
+	} else {
+		arrField = arrPkg + ".ArrayComparableField"
+	}
+
+	arrNewField := arrPkg + ".NewArrayField"
+	if eft.EqualAble {
+		arrNewField = arrPkg + ".NewArrayAnyComparableField"
+	}
+
+	thisNewFieldTempl := template.Must(template.New("newField").Parse(
+		`func(name string) {{.ThisField}} {
+	newElem := {{.NewElemField}}
+	return {{.ArrNewField}}[{{.ElemT}}, {{.ElemField}}](name, newElem)
+}`))
+
+	type templData struct {
+		ThisField    string
+		NewElemField string
+		ArrNewField  string
+		ElemT        string
+		ElemField    string
+	}
+
+	newTemplData := func(thisField, newElemField, elemT, elemField string) *templData {
+		return &templData{
+			ArrNewField:  arrNewField,
+			ThisField:    thisField,
+			NewElemField: newElemField,
+			ElemField:    elemField,
+			ElemT:        elemT,
+		}
+	}
+
+	elemT := addDot(g.imports.add(eft.T.PkgPath())) + eft.T.Name()
+	elemField := addDot(g.imports.add(eft.Field.PkgPath())) + eft.Field.Name()
+	newElemField := addDot(g.imports.add(eft.NewField.PkgPath())) + eft.NewField.Name()
+
+	for i := 0; i < dim; i++ {
+		newElemField = indentLines(newElemField, 1)
+
+		thisT := fmt.Sprintf("[]%s", elemT)
+		thisField := fmt.Sprintf("%s[%s, %s]", arrField, elemT, elemField)
+		thisData := newTemplData(thisField, newElemField, elemT, elemField)
+		buf := bytes.Buffer{}
+		if err := thisNewFieldTempl.Execute(&buf, thisData); err != nil {
+			panic(err)
+		}
+		thisNewField := buf.String()
+
+		elemT = thisT
+		elemField = thisField
+		newElemField = thisNewField
+	}
+
+	return TypeInfo{
+		T:         ts,
+		Field:     typeRef{name: elemField, pkg: ""},
+		NewField:  typeRef{name: newElemField, pkg: ""},
+		EqualAble: eft.EqualAble,
+	}, true
+}
+
+// ─── buildStruct ────────────────────────────────────────────
+
+func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
+	oldImports := g.imports
+	g.imports = newAllImports()
+	thisImports := g.imports
+
+	thisPkg := g.targetPkg
+	thisDir := g.outputDir
+	thisName := ts.Name()
+
+	if thisPkg == "" {
+		thisPkg = ts.PkgPath()
+	}
+
+	if g.targetPkg != "" && ts.PkgPath() != "" && g.targetPkg != ts.PkgPath() {
+		subDir := x.SanitizePackageName(x.LastSubPath(ts.PkgPath()) + "_" + base6408(ts.PkgPath()))
+		if strings.HasPrefix(ts.PkgPath(), g.targetPkg+"/") {
+			subDir = strings.TrimPrefix(ts.PkgPath(), g.targetPkg+"/")
+		}
+		thisPkg = path.Join(g.targetPkg, subDir)
+		thisDir = path.Join(g.outputDir, subDir)
+	}
+
+	thisImports.exclude(thisPkg)
+	thisImports.alias.get(thisPkg)
+
+	fieldsPkg := "github.com/xpwu/go-mongodb/fields"
+	filterPkg := "github.com/xpwu/go-mongodb/filter"
+	updaterPkg := "github.com/xpwu/go-mongodb/updater"
+	mongoPkg := "github.com/xpwu/go-mongodb/field"
+
+	s := &templateData{
+		Pkg:          path.Base(thisPkg),
+		TypePkg:      addDot(thisImports.add(ts.PkgPath())),
+		Name:         thisName,
+		FilterAlias:  addDot(thisImports.add(filterPkg)),
+		FieldAlias:   addDot(thisImports.add(fieldsPkg)),
+		MongoAlias:   addDot(thisImports.add(mongoPkg)),
+		UpdaterAlias: addDot(thisImports.add(updaterPkg)),
+		Inlines:      make([]templateInline, 0),
+		Fields:       make([]templateField, 0),
+	}
+
+	equalAble := true
+	for i := 0; i < ts.NumField(); i++ {
+		fs := ts.Field(i)
+		if !fs.IsExported() {
+			continue
+		}
+
+		tag := fs.StructTag()
+		if tag == nil || tag.Skip {
+			continue
+		}
+
+		if g.config.PreserveField && (tag.OmitEmpty || tag.MinSize || tag.Truncate) && !g.config.IgnoreTagErr {
+			panic(fmt.Errorf(
+				"NOT supported tag: minsize & truncate & omitempty are used in %s.%s.%s.\n"+
+					"Using IgnoreTagErr() can ignore the error",
+				ts.PkgPath(), ts.Name(), fs.Name()))
+		}
+
+		fd := templateField{}
+		fd.MethodName = fs.Name()
+		fd.TagName = tag.Name
+		if g.config.PreserveField {
+			fd.TagName = fs.Name()
+		}
+
+		subFt := g.build(fs.Type())
+		equalAble = equalAble && subFt.EqualAble
+
+		subFName := addDot(thisImports.add(subFt.Field.PkgPath())) + subFt.Field.Name()
+		subNewF := addDot(thisImports.add(subFt.NewField.PkgPath())) + subFt.NewField.Name()
+
+		if tag.Inline && fs.Type().Kind() == reflect.Struct {
+			s.Inlines = append(s.Inlines, templateInline{subFName, subNewF})
+		} else {
+			fd.FieldName = subFName
+			fd.NewField = indentLines(subNewF, 2)
+			s.Fields = append(s.Fields, fd)
+		}
+	}
+
+	s.Imports = thisImports.all()
+	s.EqualAble = equalAble
+
+	if err := os.MkdirAll(thisDir, 0755); err != nil {
+		panic(err)
+	}
+
+	outputPath := filepath.Join(thisDir, "z"+ts.Name()+"Field.go")
+	file, err := os.Create(outputPath)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+
+	if err := structTemplate.Execute(file, s); err != nil {
+		panic(err)
+	}
+
+	g.imports = oldImports
+
+	return TypeInfo{
+		T:         ts,
+		Field:     typeRef{name: thisName + "Field", pkg: thisPkg},
+		NewField:  typeRef{name: "New" + thisName + "Field", pkg: thisPkg},
+		EqualAble: equalAble,
+	}, true
+}
+
+// ─── 工具函数 ───────────────────────────────────────────────
+
+func indentLines(s string, indents int) string {
+	lines := strings.Split(s, "\n")
+	for i := 1; i < len(lines); i++ {
+		lines[i] = strings.Repeat("\t", indents) + lines[i]
+	}
+	return strings.Join(lines, "\n")
+}
+
+func base6408(s string) string {
+	sha256v := sha256.Sum256([]byte(s))
+	r := base64.StdEncoding.EncodeToString(sha256v[:])
+	return r[0:8]
+}
+
+func getRuntimeInfo(skip int) (pkg, dir string) {
+	pc, file, _, ok := runtime.Caller(skip)
+	if ok {
+		fName := runtime.FuncForPC(pc).Name()
+		fName = before(fName, "[")
+		f := strings.FieldsFunc(fName, func(r rune) bool {
+			return r == '.'
+		})
+		pkg = strings.Join(f[:len(f)-1], ".")
+		dir = path.Dir(file)
+	}
+	return
+}
+
+func before(s, sep string) string {
+	if i := strings.Index(s, sep); i != -1 {
+		return s[:i]
+	}
+	return s
+}
