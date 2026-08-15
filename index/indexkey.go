@@ -1,14 +1,13 @@
 package index
 
 import (
-	"errors"
 	"github.com/xpwu/go-mongodb/field"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type Key interface {
 	ToBsonD() bson.D
-	Options() (ret bson.D, err error)
+	Options() bson.D
 }
 
 type base struct {
@@ -21,10 +20,8 @@ func (b *base) ToBsonD() bson.D {
 	return bson.D{{b.f.FullName(), b.value}}
 }
 
-var ErrOptions = errors.New("only one of Partial or Sparse may be set")
-
-func (b *base) Options() (ret bson.D, err error) {
-	return b.opts.ToBsonD()
+func (b *base) Options() bson.D {
+	return b.opts.Build()
 }
 
 type KeyType = interface{}
@@ -68,8 +65,8 @@ func (c *compKey) ToBsonD() bson.D {
 	return ret
 }
 
-func (c *compKey) Options() (ret bson.D, err error) {
-	return c.opts.ToBsonD()
+func (c *compKey) Options() bson.D {
+	return c.opts.Build()
 }
 
 func CompKeys(keys []Key, opts ...Option) Key {

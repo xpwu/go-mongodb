@@ -42,10 +42,7 @@ func TestSpherePointField_Index2DWith(t *testing.T) {
 	}
 
 	// 验证 options 包含 2dsphereIndexVersion
-	opts, err := key.Options()
-	if err != nil {
-		t.Fatalf("Index2DWith Options error: %v", err)
-	}
+	opts := key.Options()
 	found := false
 	for _, e := range opts {
 		if e.Key == "2dsphereIndexVersion" {
@@ -270,10 +267,7 @@ func TestFlatPointField_Index2DWith(t *testing.T) {
 		t.Errorf("FlatPoint Index2DWith ToBsonD: got %v, want %v", got, want)
 	}
 
-	opts, err := key.Options()
-	if err != nil {
-		t.Fatalf("FlatPoint Index2DWith Options error: %v", err)
-	}
+	opts := key.Options()
 	found := false
 	for _, e := range opts {
 		if e.Key == "bits" {
@@ -298,10 +292,7 @@ func TestFlatPointField_Index2DWithRange(t *testing.T) {
 		t.Errorf("FlatPoint Index2DWithRange ToBsonD: got %v, want %v", got, want)
 	}
 
-	opts, err := key.Options()
-	if err != nil {
-		t.Fatalf("FlatPoint Index2DWithRange Options error: %v", err)
-	}
+	opts := key.Options()
 	hasMin, hasMax := false, false
 	for _, d := range opts {
 		if d.Key == "min" {

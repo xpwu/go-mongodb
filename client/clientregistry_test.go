@@ -826,10 +826,7 @@ func TestGetLowerFieldRegistry_PartialIndexFilter_UsedInIndexPartial(t *testing.
 	}
 
 	// 验证 Options 包含 partialFilterExpression
-	opts, err := key.Options()
-	if err != nil {
-		t.Fatalf("Options() failed: %v", err)
-	}
+	opts := key.Options()
 	// opts 应该包含 partialFilterExpression
 	found := false
 	for _, e := range opts {

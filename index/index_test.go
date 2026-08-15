@@ -138,11 +138,8 @@ func TestIndex_Compound_Empty(t *testing.T) {
 func TestIndex_Options_Unique(t *testing.T) {
 	f := &mockField{"email"}
 	key := NewKey(f, 1, Unique())
-	opts, err := key.Options()
+	opts := key.Options()
 
-	if err != nil {
-		t.Fatalf("Options Unique: unexpected error: %v", err)
-	}
 	if len(opts) != 1 || opts[0].Key != "unique" {
 		t.Errorf("Options Unique: got %#v, want key 'unique'", opts)
 	}
@@ -154,11 +151,8 @@ func TestIndex_Options_Unique(t *testing.T) {
 func TestIndex_Options_Sparse(t *testing.T) {
 	f := &mockField{"email"}
 	key := NewKey(f, 1, Sparse())
-	opts, err := key.Options()
+	opts := key.Options()
 
-	if err != nil {
-		t.Fatalf("Options Sparse: unexpected error: %v", err)
-	}
 	if len(opts) != 1 || opts[0].Key != "sparse" {
 		t.Errorf("Options Sparse: got %#v, want key 'sparse'", opts)
 	}
@@ -167,11 +161,8 @@ func TestIndex_Options_Sparse(t *testing.T) {
 func TestIndex_Options_Name(t *testing.T) {
 	f := &mockField{"email"}
 	key := NewKey(f, 1, Name("idx_email"))
-	opts, err := key.Options()
+	opts := key.Options()
 
-	if err != nil {
-		t.Fatalf("Options Name: unexpected error: %v", err)
-	}
 	found := false
 	for _, o := range opts {
 		if o.Key == "name" && o.Value == "idx_email" {
@@ -190,11 +181,8 @@ func TestIndex_Options_Combined(t *testing.T) {
 		Sparse(),
 		Name("idx_email"),
 	)
-	opts, err := key.Options()
+	opts := key.Options()
 
-	if err != nil {
-		t.Fatalf("Options Combined: unexpected error: %v", err)
-	}
 	if len(opts) != 3 {
 		t.Errorf("Options Combined: expected 3 options, got %d: %#v", len(opts), opts)
 	}
@@ -210,11 +198,8 @@ func TestIndex_Compound_Options(t *testing.T) {
 		Name("idx_name_age"),
 	)
 	got := compound.ToBsonD()
-	opts, err := compound.Options()
-
-	if err != nil {
-		t.Fatalf("Compound Options: unexpected error: %v", err)
-	}
+	opts := compound.Options()
+	
 	if len(opts) == 0 {
 		t.Errorf("Compound Options: expected options, got none")
 	}

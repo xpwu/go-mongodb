@@ -342,11 +342,7 @@ func TestBaseField_DescIndex(t *testing.T) {
 func TestBaseField_AscIndex_Unique(t *testing.T) {
 	b := NewBaseField[string]("email")
 	key := b.AscIndex(index.Unique())
-	opts, err := key.Options()
-	if err != nil {
-		t.Fatalf("Options error: %v", err)
-	}
-
+	opts := key.Options()
 	found := false
 	for _, e := range opts {
 		if e.Key == "unique" {
@@ -364,11 +360,7 @@ func TestBaseField_AscIndex_Unique(t *testing.T) {
 func TestBaseField_AscIndex_Name(t *testing.T) {
 	b := NewBaseField[string]("email")
 	key := b.AscIndex(index.Name("idx_email"))
-	opts, err := key.Options()
-	if err != nil {
-		t.Fatalf("Options error: %v", err)
-	}
-
+	opts := key.Options()
 	found := false
 	for _, e := range opts {
 		if e.Key == "name" {
