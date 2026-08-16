@@ -64,7 +64,7 @@ type ScannedStruct struct {
 	Package string
 }
 
-// ─── ScanDir：只解析 GOFILE 当前文件 ───────────────────────
+// ─── ScanDir ────────────────────────────────────────────────
 
 func ScanDir(dir string) (*ScanResult, error) {
 	goFile := os.Getenv("GOFILE")
@@ -151,7 +151,9 @@ func parseStructFromFile(filePath, structName string) (TypeSource, error) {
 
 	importMap := buildImportMap(file)
 
-	// 用 GOPACKAGE 环境变量获取当前包导入路径
+	// 收集同文件里的类型别名（type GPS float64 → GPS: reflect.Float64）
+	typeAliases := collectTypeAliases(file)
+
 	pkgPath := os.Getenv("GOPACKAGE")
 	if pkgPath == "" {
 		modulePath, _ := readModulePath(filepath.Dir(filePath))
@@ -189,7 +191,7 @@ func parseStructFromFile(filePath, structName string) (TypeSource, error) {
 				kind:    reflect.Struct,
 			}
 			for _, field := range structType.Fields.List {
-				fs := parseAstField(field, importMap)
+				fs := parseAstField(field, importMap, pkgPath, typeAliases)
 				ts.fields = append(ts.fields, fs)
 			}
 			return ts, nil
@@ -239,6 +241,9 @@ func parseStructFromDir(dir, structName string) (TypeSource, error) {
 				}
 			}
 
+			// 收集类型别名
+			typeAliases := collectTypeAliases(file)
+
 			for _, decl := range file.Decls {
 				genDecl, ok := decl.(*ast.GenDecl)
 				if !ok {
@@ -263,7 +268,7 @@ func parseStructFromDir(dir, structName string) (TypeSource, error) {
 						kind:    reflect.Struct,
 					}
 					for _, field := range structType.Fields.List {
-						fs := parseAstField(field, importMap)
+						fs := parseAstField(field, importMap, pkgPath, typeAliases)
 						ts.fields = append(ts.fields, fs)
 					}
 					return ts, nil
@@ -272,6 +277,28 @@ func parseStructFromDir(dir, structName string) (TypeSource, error) {
 		}
 	}
 	return nil, nil
+}
+
+// ─── 收集类型别名 ───────────────────────────────────────────
+
+func collectTypeAliases(file *ast.File) map[string]reflect.Kind {
+	aliases := make(map[string]reflect.Kind)
+	for _, decl := range file.Decls {
+		genDecl, ok := decl.(*ast.GenDecl)
+		if !ok {
+			continue
+		}
+		for _, spec := range genDecl.Specs {
+			typeSpec, ok := spec.(*ast.TypeSpec)
+			if !ok {
+				continue
+			}
+			if ident, ok := typeSpec.Type.(*ast.Ident); ok {
+				aliases[typeSpec.Name.Name] = kindFromName(ident.Name)
+			}
+		}
+	}
+	return aliases
 }
 
 // ─── AST 解析辅助 ───────────────────────────────────────────
@@ -290,7 +317,7 @@ func buildImportMap(file *ast.File) map[string]string {
 	return importMap
 }
 
-func parseAstField(f *ast.Field, importMap map[string]string) *astFieldSource {
+func parseAstField(f *ast.Field, importMap map[string]string, currentPkgPath string, typeAliases map[string]reflect.Kind) *astFieldSource {
 	name := ""
 	if len(f.Names) > 0 {
 		name = f.Names[0].Name
@@ -311,19 +338,27 @@ func parseAstField(f *ast.Field, importMap map[string]string) *astFieldSource {
 
 	return &astFieldSource{
 		name:     name,
-		typ:      parseAstType(f.Type, importMap),
+		typ:      parseAstType(f.Type, importMap, currentPkgPath, typeAliases),
 		tag:      tagStr,
 		st:       st,
 		exported: name != "" && name[0] >= 'A' && name[0] <= 'Z',
 	}
 }
 
-func parseAstType(expr ast.Expr, importMap map[string]string) *astTypeSource {
+func parseAstType(expr ast.Expr, importMap map[string]string, currentPkgPath string, typeAliases map[string]reflect.Kind) *astTypeSource {
 	switch t := expr.(type) {
 	case *ast.Ident:
+		k := kindFromName(t.Name)
+		if k == reflect.Struct {
+			// 查类型别名表，看是不是基本类型的别名（如 type GPS float64）
+			if realKind, ok := typeAliases[t.Name]; ok {
+				k = realKind
+			}
+		}
 		return &astTypeSource{
-			name: t.Name,
-			kind: kindFromName(t.Name),
+			name:    t.Name,
+			pkgPath: currentPkgPath,
+			kind:    k,
 		}
 	case *ast.SelectorExpr:
 		pkgAlias := ""
@@ -337,10 +372,10 @@ func parseAstType(expr ast.Expr, importMap map[string]string) *astTypeSource {
 			kind:    reflect.Struct,
 		}
 	case *ast.StarExpr:
-		elem := parseAstType(t.X, importMap)
+		elem := parseAstType(t.X, importMap, currentPkgPath, typeAliases)
 		return &astTypeSource{name: "*" + elem.name, kind: reflect.Ptr, elem: elem}
 	case *ast.ArrayType:
-		elem := parseAstType(t.Elt, importMap)
+		elem := parseAstType(t.Elt, importMap, currentPkgPath, typeAliases)
 		return &astTypeSource{name: "[]" + elem.name, kind: reflect.Slice, elem: elem}
 	default:
 		return &astTypeSource{name: "unknown", kind: reflect.Interface}
