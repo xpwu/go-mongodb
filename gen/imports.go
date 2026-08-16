@@ -6,12 +6,14 @@ import (
 	"sort"
 )
 
+// allImports 管理生成文件所需的所有 import
 type allImports struct {
 	data  map[string]string
 	alias aliasNames
 	exc   map[string]bool
 }
 
+// aliasNames 已使用的别名集合
 type aliasNames map[string]bool
 
 func (a aliasNames) get(expect string) string {
@@ -25,6 +27,7 @@ func (a aliasNames) get(expect string) string {
 	return test
 }
 
+// newAllImports 创建空的 import 管理器
 func newAllImports() *allImports {
 	return &allImports{
 		data:  make(map[string]string),
@@ -33,10 +36,12 @@ func newAllImports() *allImports {
 	}
 }
 
+// exclude 排除指定包路径（不生成 import）
 func (m *allImports) exclude(paths string) {
 	m.exc[paths] = true
 }
 
+// add 添加包路径，返回别名
 func (m *allImports) add(paths string) (alias string) {
 	if paths == "" || m.exc[paths] {
 		return ""
@@ -49,6 +54,7 @@ func (m *allImports) add(paths string) (alias string) {
 	return a
 }
 
+// addDot 给非空字符串加 "." 后缀
 func addDot(s string) string {
 	if len(s) == 0 {
 		return s
@@ -56,11 +62,13 @@ func addDot(s string) string {
 	return s + "."
 }
 
+// importTemp 单个 import 声明
 type importTemp struct {
 	Alias  string
 	Import string
 }
 
+// all 返回排序后的 import 列表
 func (m *allImports) all() []importTemp {
 	ret := make([]importTemp, len(m.data))
 	var keys []string

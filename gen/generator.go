@@ -18,6 +18,7 @@ import (
 
 // ─── TypeInfo ───────────────────────────────────────────────
 
+// TypeInfo 描述一个类型在生成代码中的映射信息
 type TypeInfo struct {
 	T         TypeSource
 	Field     typeRef
@@ -35,28 +36,64 @@ func (r typeRef) PkgPath() string { return r.pkg }
 
 // ─── Generator ──────────────────────────────────────────────
 
+// Generator 代码生成器
 type Generator struct {
-	config    *Config
-	imports   *allImports
-	outputDir string
-	targetPkg string
-	typeMap   map[string]TypeInfo
+	config     *Config
+	imports    *allImports
+	outputDir  string
+	targetPkg  string
+	typeMap    map[string]TypeInfo
+	pendingSts []TypeSource // 待处理的嵌套 struct 队列
+	visited    map[string]bool
 }
 
+// NewGenerator 创建生成器
 func NewGenerator(config *Config) *Generator {
 	return &Generator{
 		config:    config,
 		outputDir: config.Dir,
 		targetPkg: config.Pkg,
 		typeMap:   make(map[string]TypeInfo),
+		visited:   make(map[string]bool),
 	}
 }
 
+// Generate 从入口类型开始生成所有相关代码
 func (g *Generator) Generate(ts TypeSource) {
 	g.imports = newAllImports()
+	g.typeMap = make(map[string]TypeInfo)
+	g.pendingSts = nil
+	g.visited = make(map[string]bool)
+
+	// 先生成入口类型
 	g.build(ts)
+
+	// 处理所有嵌套 struct
+	g.processPending()
 }
 
+// processPending 循环处理嵌套 struct 队列
+func (g *Generator) processPending() {
+	for len(g.pendingSts) > 0 {
+		// 取出队首
+		ts := g.pendingSts[0]
+		g.pendingSts = g.pendingSts[1:]
+
+		key := ts.PkgPath() + "." + ts.Name()
+		if g.visited[key] {
+			continue
+		}
+		g.visited[key] = true
+
+		// 确保字段已加载（AST 版会懒加载，反射版空操作）
+		ts.EnsureFields()
+
+		// 生成该 struct 的代码
+		g.buildStruct(ts)
+	}
+}
+
+// build 分发到具体的 build 方法
 func (g *Generator) build(ts TypeSource) TypeInfo {
 	key := ts.PkgPath() + "." + ts.Name()
 	if info, ok := g.typeMap[key]; ok {
@@ -124,27 +161,31 @@ func (g *Generator) lookupCustom(ts TypeSource) (TypeInfo, bool) {
 func (g *Generator) lookupBuiltinDirect(ts TypeSource) (TypeInfo, bool) {
 	fieldsPkg := "github.com/xpwu/go-mongodb/fields"
 
-	builtins := map[string]TypeInfo{
-		"int":     {T: ts, Field: typeRef{name: "IntField", pkg: fieldsPkg}, NewField: typeRef{name: "NewIntField", pkg: fieldsPkg}, EqualAble: true},
-		"int8":    {T: ts, Field: typeRef{name: "Int8Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt8Field", pkg: fieldsPkg}, EqualAble: true},
-		"int16":   {T: ts, Field: typeRef{name: "Int16Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt16Field", pkg: fieldsPkg}, EqualAble: true},
-		"int32":   {T: ts, Field: typeRef{name: "Int32Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt32Field", pkg: fieldsPkg}, EqualAble: true},
-		"int64":   {T: ts, Field: typeRef{name: "Int64Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt64Field", pkg: fieldsPkg}, EqualAble: true},
-		"uint":    {T: ts, Field: typeRef{name: "UintField", pkg: fieldsPkg}, NewField: typeRef{name: "NewUintField", pkg: fieldsPkg}, EqualAble: true},
-		"uint8":   {T: ts, Field: typeRef{name: "Uint8Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint8Field", pkg: fieldsPkg}, EqualAble: true},
-		"uint16":  {T: ts, Field: typeRef{name: "Uint16Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint16Field", pkg: fieldsPkg}, EqualAble: true},
-		"uint32":  {T: ts, Field: typeRef{name: "Uint32Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint32Field", pkg: fieldsPkg}, EqualAble: true},
-		"uint64":  {T: ts, Field: typeRef{name: "Uint64Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint64Field", pkg: fieldsPkg}, EqualAble: true},
-		"float32": {T: ts, Field: typeRef{name: "Float32Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewFloat32Field", pkg: fieldsPkg}, EqualAble: false},
-		"float64": {T: ts, Field: typeRef{name: "Float64Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewFloat64Field", pkg: fieldsPkg}, EqualAble: false},
-		"string":  {T: ts, Field: typeRef{name: "StringField", pkg: fieldsPkg}, NewField: typeRef{name: "NewStringField", pkg: fieldsPkg}, EqualAble: true},
-		"bool":    {T: ts, Field: typeRef{name: "BoolField", pkg: fieldsPkg}, NewField: typeRef{name: "NewBoolField", pkg: fieldsPkg}, EqualAble: true},
+	// 无包路径 = 内置类型
+	if ts.PkgPath() == "" {
+		builtins := map[string]TypeInfo{
+			"int":     {T: ts, Field: typeRef{name: "IntField", pkg: fieldsPkg}, NewField: typeRef{name: "NewIntField", pkg: fieldsPkg}, EqualAble: true},
+			"int8":    {T: ts, Field: typeRef{name: "Int8Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt8Field", pkg: fieldsPkg}, EqualAble: true},
+			"int16":   {T: ts, Field: typeRef{name: "Int16Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt16Field", pkg: fieldsPkg}, EqualAble: true},
+			"int32":   {T: ts, Field: typeRef{name: "Int32Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt32Field", pkg: fieldsPkg}, EqualAble: true},
+			"int64":   {T: ts, Field: typeRef{name: "Int64Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewInt64Field", pkg: fieldsPkg}, EqualAble: true},
+			"uint":    {T: ts, Field: typeRef{name: "UintField", pkg: fieldsPkg}, NewField: typeRef{name: "NewUintField", pkg: fieldsPkg}, EqualAble: true},
+			"uint8":   {T: ts, Field: typeRef{name: "Uint8Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint8Field", pkg: fieldsPkg}, EqualAble: true},
+			"uint16":  {T: ts, Field: typeRef{name: "Uint16Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint16Field", pkg: fieldsPkg}, EqualAble: true},
+			"uint32":  {T: ts, Field: typeRef{name: "Uint32Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint32Field", pkg: fieldsPkg}, EqualAble: true},
+			"uint64":  {T: ts, Field: typeRef{name: "Uint64Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewUint64Field", pkg: fieldsPkg}, EqualAble: true},
+			"float32": {T: ts, Field: typeRef{name: "Float32Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewFloat32Field", pkg: fieldsPkg}, EqualAble: false},
+			"float64": {T: ts, Field: typeRef{name: "Float64Field", pkg: fieldsPkg}, NewField: typeRef{name: "NewFloat64Field", pkg: fieldsPkg}, EqualAble: false},
+			"string":  {T: ts, Field: typeRef{name: "StringField", pkg: fieldsPkg}, NewField: typeRef{name: "NewStringField", pkg: fieldsPkg}, EqualAble: true},
+			"bool":    {T: ts, Field: typeRef{name: "BoolField", pkg: fieldsPkg}, NewField: typeRef{name: "NewBoolField", pkg: fieldsPkg}, EqualAble: true},
+		}
+		if info, ok := builtins[ts.Name()]; ok {
+			return info, true
+		}
+		return TypeInfo{}, false
 	}
 
-	if info, ok := builtins[ts.Name()]; ok && ts.PkgPath() == "" {
-		return info, true
-	}
-
+	// bson 包类型
 	bsonPkg := "go.mongodb.org/mongo-driver/v2/bson"
 	if ts.PkgPath() == bsonPkg {
 		bsonTypes := map[string]TypeInfo{
@@ -165,6 +206,7 @@ func (g *Generator) lookupBuiltinDirect(ts TypeSource) (TypeInfo, bool) {
 		}
 	}
 
+	// geo 包类型
 	geoPkg := "github.com/xpwu/go-mongodb/geo"
 	if ts.PkgPath() == geoPkg {
 		geoTypes := map[string]TypeInfo{
@@ -235,7 +277,7 @@ func (g *Generator) buildSlice(ts TypeSource) (TypeInfo, bool) {
 		return TypeInfo{}, false
 	}
 
-	// 计算维度：数有多少层 Slice/Array 嵌套
+	// 计算维度
 	dim := 0
 	current := ts
 	for current != nil && (current.Kind() == reflect.Slice || current.Kind() == reflect.Array) {
@@ -315,6 +357,14 @@ func (g *Generator) buildSlice(ts TypeSource) (TypeInfo, bool) {
 // ─── buildStruct ────────────────────────────────────────────
 
 func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
+	// 确保字段已加载（AST 版关键！）
+	ts.EnsureFields()
+
+	key := ts.PkgPath() + "." + ts.Name()
+	if info, ok := g.typeMap[key]; ok {
+		return info, true
+	}
+
 	oldImports := g.imports
 	g.imports = newAllImports()
 	thisImports := g.imports
@@ -363,27 +413,34 @@ func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 			continue
 		}
 
-		tag := fs.StructTag()
+		sf := reflect.StructField{Name: fs.Name(), Tag: reflect.StructTag(fs.Tag())}
+		tag, _ := x.ParseStruct(sf, !g.config.PreserveField, g.config.UseJSONTags)
+
 		if tag == nil || tag.Skip {
 			continue
 		}
-
 		if g.config.PreserveField && (tag.OmitEmpty || tag.MinSize || tag.Truncate) && !g.config.IgnoreTagErr {
-			panic(fmt.Errorf(
-				"NOT supported tag: minsize & truncate & omitempty are used in %s.%s.%s.\n"+
-					"Using IgnoreTagErr() can ignore the error",
-				ts.PkgPath(), ts.Name(), fs.Name()))
+			if !g.config.IgnoreTagErr {
+				panic(fmt.Errorf(
+					"NOT supported tag: minsize & truncate & omitempty are used in %s.%s.%s. \n"+
+						"Using IgnoreTagErr() can ignore the error",
+					ts.PkgPath(), ts.Name(), fs.Name()))
+			} else {
+				println(fmt.Sprintf(
+					"NOT supported tag: minsize & truncate & omitempty are used in %s.%s.%s.",
+					ts.PkgPath(), ts.Name(), fs.Name))
+			}
 		}
 
 		fd := templateField{}
 		fd.MethodName = fs.Name()
 		fd.TagName = tag.Name
-		if g.config.PreserveField {
-			fd.TagName = fs.Name()
-		}
 
 		subFt := g.build(fs.Type())
 		equalAble = equalAble && subFt.EqualAble
+
+		// 关键：如果子类型是 struct，加入待处理队列
+		g.maybeEnqueue(fs.Type())
 
 		subFName := addDot(thisImports.add(subFt.Field.PkgPath())) + subFt.Field.Name()
 		subNewF := addDot(thisImports.add(subFt.NewField.PkgPath())) + subFt.NewField.Name()
@@ -417,12 +474,72 @@ func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 
 	g.imports = oldImports
 
-	return TypeInfo{
+	info := TypeInfo{
 		T:         ts,
 		Field:     typeRef{name: thisName + "Field", pkg: thisPkg},
 		NewField:  typeRef{name: "New" + thisName + "Field", pkg: thisPkg},
 		EqualAble: equalAble,
-	}, true
+	}
+	g.typeMap[key] = info
+	return info, true
+}
+
+// maybeEnqueue 如果类型是 struct（或解引用后是 struct），加入待处理队列
+func (g *Generator) maybeEnqueue(ts TypeSource) {
+	if ts == nil {
+		return
+	}
+
+	// 解引用 Ptr
+	actual := ts
+	if ts.Kind() == reflect.Ptr {
+		actual = ts.Elem()
+	}
+	if actual == nil {
+		return
+	}
+
+	// 解引用 Slice/Array（只解一层用于判断）
+	elem := actual
+	if actual.Kind() == reflect.Slice || actual.Kind() == reflect.Array {
+		elem = actual.Elem()
+	}
+	if elem == nil {
+		return
+	}
+
+	// 只处理 struct 类型
+	if elem.Kind() != reflect.Struct {
+		return
+	}
+
+	// 跳过内置包（fields 自身、bson、geo 等已在 lookupBuiltinDirect 中处理）
+	if elem.PkgPath() == "" {
+		return
+	}
+	skipPrefixes := []string{
+		"github.com/xpwu/go-mongodb/fields",
+		"github.com/xpwu/go-mongodb/filter",
+		"github.com/xpwu/go-mongodb/updater",
+		"github.com/xpwu/go-mongodb/field",
+		"go.mongodb.org/mongo-driver/v2/bson",
+		"github.com/xpwu/go-mongodb/geo",
+	}
+	for _, p := range skipPrefixes {
+		if strings.HasPrefix(elem.PkgPath(), p) {
+			return
+		}
+	}
+
+	key := elem.PkgPath() + "." + elem.Name()
+	if g.visited[key] {
+		return
+	}
+
+	// 确保该类型可以加载（AST 版需要）
+	elem.EnsureFields()
+
+	g.pendingSts = append(g.pendingSts, elem)
 }
 
 // ─── 工具函数 ───────────────────────────────────────────────

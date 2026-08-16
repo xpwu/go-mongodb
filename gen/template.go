@@ -5,6 +5,7 @@ import (
 	"text/template"
 )
 
+// structTemplate 生成 zXxxField.go 的代码模板
 var structTemplate = template.Must(template.New("structCode2").Funcs(template.FuncMap{
 	"firstToLower": firstToLower,
 }).Parse(`
@@ -78,6 +79,7 @@ func (s *{{$.Name|firstToLower}}Field) {{.MethodName}}F() {{.FieldName}} {
 {{- end}}
 `))
 
+// templateData 模板数据
 type templateData struct {
 	Pkg          string
 	TypePkg      string
@@ -92,6 +94,7 @@ type templateData struct {
 	EqualAble    bool
 }
 
+// templateField 单个字段的模板数据
 type templateField struct {
 	MethodName string
 	FieldName  string
@@ -99,11 +102,13 @@ type templateField struct {
 	NewField   string
 }
 
+// templateInline 内嵌字段的模板数据
 type templateInline struct {
 	FiledName string
 	NewField  string
 }
 
+// firstToLower 首字母转小写
 func firstToLower(s string) string {
 	if len(s) == 0 {
 		return s

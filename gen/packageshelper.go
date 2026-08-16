@@ -4,6 +4,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+// InferPackagePath 从目录推断包路径
 func InferPackagePath(dir string) (string, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedName | packages.NeedImports,

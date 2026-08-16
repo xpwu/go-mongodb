@@ -2,8 +2,6 @@ package gen
 
 import (
 	"reflect"
-
-	"github.com/xpwu/go-mongodb/x"
 )
 
 type reflectTypeSource struct {
@@ -27,6 +25,9 @@ func (r *reflectTypeSource) Elem() TypeSource {
 }
 func (r *reflectTypeSource) IsBuiltin() bool { return r.t.PkgPath() == "" }
 
+// EnsureFields 反射版不需要懒加载，空实现
+func (r *reflectTypeSource) EnsureFields() {}
+
 func (r *reflectTypeSource) Field(i int) FieldSource {
 	return &reflectFieldSource{f: r.t.Field(i)}
 }
@@ -38,10 +39,6 @@ type reflectFieldSource struct {
 func (f *reflectFieldSource) Name() string     { return f.f.Name }
 func (f *reflectFieldSource) Type() TypeSource { return &reflectTypeSource{t: f.f.Type} }
 func (f *reflectFieldSource) Tag() string      { return string(f.f.Tag) }
-func (f *reflectFieldSource) StructTag() *x.StructTags {
-	st, _ := x.ParseStructTags(f.f)
-	return st
-}
 func (f *reflectFieldSource) IsExported() bool { return f.f.PkgPath == "" }
 
 func ReflectTypeSource(t reflect.Type) TypeSource {
