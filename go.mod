@@ -1,13 +1,15 @@
 module github.com/xpwu/go-mongodb
 
-go 1.22.0
+go 1.19
 
 require (
 	github.com/stretchr/testify v1.5.1
 	github.com/xpwu/go-x v0.3.0
 	go.mongodb.org/mongo-driver/v2 v2.8.0
-	golang.org/x/tools v0.30.0
+	golang.org/x/tools v0.24.1
 )
+
+require golang.org/x/mod v0.20.0 // indirect
 
 require (
 	github.com/davecgh/go-spew v1.1.1 // indirect
@@ -18,7 +20,6 @@ require (
 	github.com/xdg-go/stringprep v1.0.4 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
 	golang.org/x/crypto v0.33.0 // indirect
-	golang.org/x/mod v0.23.0 // indirect
 	golang.org/x/sync v0.11.0 // indirect
 	golang.org/x/text v0.22.0 // indirect
 	gopkg.in/yaml.v2 v2.2.2 // indirect
