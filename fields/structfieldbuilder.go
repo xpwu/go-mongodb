@@ -2,8 +2,6 @@ package fields
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"github.com/xpwu/go-mongodb/field"
@@ -825,7 +823,7 @@ func (b *StructFieldBuilder) buildStruct(t reflect.Type) (ft TypeInfo, ok bool) 
 	thisName := x.BaseTypeName(t)
 
 	if b.targetPkg != t.PkgPath() {
-		subDir := x.SanitizePackageName(x.LastSubPath(t.PkgPath()) + "_" + base6408(t.PkgPath()))
+		subDir := x.SanitizePackageName(x.LastSubPath(t.PkgPath()) + "_" + x.Base6408(t.PkgPath()))
 		if strings.HasPrefix(t.PkgPath(), b.targetPkg+"/") {
 			subDir = strings.TrimPrefix(t.PkgPath(), b.targetPkg+"/")
 		}
@@ -921,10 +919,4 @@ func (b *StructFieldBuilder) buildStruct(t reflect.Type) (ft TypeInfo, ok bool) 
 	}
 
 	return ft, true
-}
-
-func base6408(s string) string {
-	sha256v := sha256.Sum256([]byte(s))
-	r := base64.StdEncoding.EncodeToString(sha256v[:])
-	return r[0:8]
 }

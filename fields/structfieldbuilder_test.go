@@ -2,6 +2,7 @@ package fields
 
 import (
 	"bytes"
+	"github.com/xpwu/go-mongodb/x"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -400,8 +401,8 @@ func TestBuildStruct_InlineGeneratesValidCode(t *testing.T) {
 
 func TestBase6408_Consistent(t *testing.T) {
 	s := "github.com/example/mypackage"
-	r1 := base6408(s)
-	r2 := base6408(s)
+	r1 := x.Base6408(s)
+	r2 := x.Base6408(s)
 
 	if r1 != r2 {
 		t.Errorf("base6408: should be deterministic, got %v and %v", r1, r2)
@@ -412,8 +413,8 @@ func TestBase6408_Consistent(t *testing.T) {
 }
 
 func TestBase6408_DifferentInput(t *testing.T) {
-	r1 := base6408("package1")
-	r2 := base6408("package2")
+	r1 := x.Base6408("package1")
+	r2 := x.Base6408("package2")
 
 	if r1 == r2 {
 		t.Errorf("base6408: different inputs should produce different outputs, got %v", r1)
@@ -422,7 +423,7 @@ func TestBase6408_DifferentInput(t *testing.T) {
 
 func TestBase6408_KnownOutput(t *testing.T) {
 	// sha256("test")[:8] base64 encoded
-	r := base6408("test")
+	r := x.Base6408("test")
 	if len(r) != 8 {
 		t.Errorf("base6408: expected 8 chars, got %d (%v)", len(r), r)
 	}
@@ -556,7 +557,7 @@ func TestIntegration_BuildAndUse(t *testing.T) {
 	}
 
 	checks := []string{
-		"filter.ComparableFilter",
+		"filter.BaseFilter",
 		"updater.BaseUpdater",
 		"field.Field",
 	}
