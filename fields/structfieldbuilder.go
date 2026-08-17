@@ -417,6 +417,24 @@ func (b *StructFieldBuilder) registerDefaultKind() {
 				true},
 			true
 	})
+	b.RegisterKind(reflect.Interface, func(rt reflect.Type) (TypeInfo, bool) {
+		thisImports := b.structCtx.imports
+		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		pkg := x.TypeFor[BaseField[any]]().PkgPath()
+
+		return TypeInfo{
+			T: rt,
+			Field: &reflectType{
+				name: fmt.Sprintf("BaseStructField[%s]", rtName),
+				pkg:  pkg,
+			},
+			NewField: &reflectType{
+				name: fmt.Sprintf("NewBaseStructField[%s]", rtName),
+				pkg:  pkg,
+			},
+			EqualAble: false,
+		}, true
+	})
 }
 
 func (b *StructFieldBuilder) ClearType(rt reflect.Type) *StructFieldBuilder {
