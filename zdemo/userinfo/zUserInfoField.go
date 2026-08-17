@@ -8,6 +8,8 @@ import (
   fields "github.com/xpwu/go-mongodb/fields"
   filter "github.com/xpwu/go-mongodb/filter"
   updater "github.com/xpwu/go-mongodb/updater"
+  bson_YR4jowyB "github.com/xpwu/go-mongodb/zdemo/userinfo/bson_YR4jowyB"
+  bson "go.mongodb.org/mongo-driver/v2/bson"
 )
 
 type UserInfoField interface {
@@ -22,6 +24,10 @@ type UserInfoField interface {
 	WsF() fields.ArrayField[Wx, WxField]
 	Pass2F() fields.ArrayComparableField[[]int16, fields.ArrayComparableField[int16, fields.Int16Field]]
 	GpsF() fields.ComputableField[GPS]
+	GpsesF() fields.ArrayField[GPS, fields.ComputableField[GPS]]
+	GpsesAF() fields.ArrayField[GPS, fields.ComputableField[GPS]]
+	BsonDF() fields.ArrayField[bson.E, bson_YR4jowyB.EField]
+	BSON_DF() fields.ArrayField[bson.E, bson_YR4jowyB.EField]
 	WxFieldInline
 }
 
@@ -34,6 +40,10 @@ type UserInfoFieldInline interface {
 	WsF() fields.ArrayField[Wx, WxField]
 	Pass2F() fields.ArrayComparableField[[]int16, fields.ArrayComparableField[int16, fields.Int16Field]]
 	GpsF() fields.ComputableField[GPS]
+	GpsesF() fields.ArrayField[GPS, fields.ComputableField[GPS]]
+	GpsesAF() fields.ArrayField[GPS, fields.ComputableField[GPS]]
+	BsonDF() fields.ArrayField[bson.E, bson_YR4jowyB.EField]
+	BSON_DF() fields.ArrayField[bson.E, bson_YR4jowyB.EField]
 	WxFieldInline
 }
 
@@ -100,4 +110,32 @@ func (s *userInfoField) Pass2F() fields.ArrayComparableField[[]int16, fields.Arr
 
 func (s *userInfoField) GpsF() fields.ComputableField[GPS] {
 	return fields.NewComputableField[GPS](fields.SubField(s.FullName(), "gps"))
+}
+
+func (s *userInfoField) GpsesF() fields.ArrayField[GPS, fields.ComputableField[GPS]] {
+	return func(name string) fields.ArrayField[GPS, fields.ComputableField[GPS]] {
+			newElem := fields.NewComputableField[GPS]
+			return fields.NewArrayField[GPS, fields.ComputableField[GPS]](name, newElem)
+		}(fields.SubField(s.FullName(), "gpses"))
+}
+
+func (s *userInfoField) GpsesAF() fields.ArrayField[GPS, fields.ComputableField[GPS]] {
+	return func(name string) fields.ArrayField[GPS, fields.ComputableField[GPS]] {
+			newElem := fields.NewComputableField[GPS]
+			return fields.NewArrayField[GPS, fields.ComputableField[GPS]](name, newElem)
+		}(fields.SubField(s.FullName(), "gpsesa"))
+}
+
+func (s *userInfoField) BsonDF() fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
+	return func(name string) fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
+			newElem := bson_YR4jowyB.NewEField
+			return fields.NewArrayField[bson.E, bson_YR4jowyB.EField](name, newElem)
+		}(fields.SubField(s.FullName(), "bsond"))
+}
+
+func (s *userInfoField) BSON_DF() fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
+	return func(name string) fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
+			newElem := bson_YR4jowyB.NewEField
+			return fields.NewArrayField[bson.E, bson_YR4jowyB.EField](name, newElem)
+		}(fields.SubField(s.FullName(), "bson_d"))
 }
