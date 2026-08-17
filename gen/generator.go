@@ -158,17 +158,49 @@ func (g *Generator) buildPtr(ts TypeSource) (TypeInfo, bool) {
 
 // ─── 自定义映射 ─────────────────────────────────────────────
 
+// parseTypeRef splits a fully qualified identifier into pkgPath + name.
+//
+//	"IntField"                       -> {pkgPath:"", name:"IntField"}
+//	"fields.IntField"                 -> {pkgPath:"fields", name:"IntField"}
+//	"github.com/foo/fields.IntField"  -> {pkgPath:"github.com/foo/fields", name:"IntField"}
+func parseTypeRef(s string) typeRef {
+	if strings.Contains(s, "/") {
+		lastSlash := strings.LastIndex(s, "/")
+		afterSlash := s[lastSlash+1:]
+		if dotIdx := strings.Index(afterSlash, "."); dotIdx != -1 {
+			return typeRef{
+				pkg:  s[:lastSlash] + "/" + afterSlash[:dotIdx],
+				name: afterSlash[dotIdx+1:],
+			}
+		}
+		return typeRef{
+			pkg:  s[:lastSlash],
+			name: afterSlash,
+		}
+	}
+	if dotIdx := strings.Index(s, "."); dotIdx != -1 {
+		return typeRef{
+			pkg:  s[:dotIdx],
+			name: s[dotIdx+1:],
+		}
+	}
+	return typeRef{name: s}
+}
+
 func (g *Generator) lookupCustom(ts TypeSource) (TypeInfo, bool) {
 	key := ts.PkgPath() + "." + ts.Name()
 	entry, ok := g.config.Maps[key]
 	if !ok {
-		return TypeInfo{}, false
+		entry, ok = g.config.Maps[ts.Name()]
+		if !ok {
+			return TypeInfo{}, false
+		}
 	}
 	return TypeInfo{
 		T:         ts,
-		Field:     typeRef{name: entry.FieldType},
-		NewField:  typeRef{name: entry.NewFunc},
-		EqualAble: true,
+		Field:     parseTypeRef(entry.FieldType),
+		NewField:  parseTypeRef(entry.NewFunc),
+		EqualAble: entry.EqualAble,
 	}, true
 }
 

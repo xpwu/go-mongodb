@@ -11,6 +11,7 @@ import (
 
 type BuildConfig struct {
 	config *gen.Config
+	types  []string
 }
 
 func NewBuildConfig() *BuildConfig {
@@ -19,8 +20,8 @@ func NewBuildConfig() *BuildConfig {
 	}
 }
 
-func (b *BuildConfig) Type(name string) *BuildConfig {
-	b.config.AddType(name)
+func (b *BuildConfig) AddType(name string) *BuildConfig {
+	b.types = append(b.types, name)
 	return b
 }
 
@@ -40,13 +41,30 @@ func (b *BuildConfig) PreserveField(ignoreTagErr bool) *BuildConfig {
 	return b
 }
 
-func (b *BuildConfig) AddMap(key, fieldType, newFunc string) *BuildConfig {
-	b.config.AddMap(key, fieldType, newFunc)
-	return b
-}
-
-func (b *BuildConfig) AddMapExt(pkgPath, typeName, fieldType, newFunc string) *BuildConfig {
-	b.config.AddMapExt(pkgPath, typeName, fieldType, newFunc)
+// AddMap adds a custom type mapping.
+//
+// typeIdent is the fully qualified type identifier of the SOURCE type:
+//   - Builtin:      "int"
+//   - Same pkg:     "MyType"
+//   - External pkg: "github.com/foo/bar.MyType"
+//
+// fieldType is the fully qualified type identifier of the TARGET field type.
+// newFunc is the fully qualified constructor function name.
+//
+// equalAble should be true if fieldType implements or embeds
+// github.com/xpwu/filter/ComparableFilter (directly or transitively through
+// embedded interfaces/structs). Otherwise, set to false.
+//
+// Example:
+//
+//	cli.NewBuildConfig().
+//	    Type("Order").
+//	    AddMap("github.com/foo/bar.GPS", "github.com/foo/fields.FloatField", "github.com/foo/fields.NewFloatField", false).
+//	    Run()
+//
+// NOTE: Generic types and generic functions are NOT supported.
+func (b *BuildConfig) AddMap(typeIdent, fieldType, newFunc string, equalAble bool) *BuildConfig {
+	b.config.AddMap(typeIdent, fieldType, newFunc, equalAble)
 	return b
 }
 
@@ -56,7 +74,7 @@ func determineSrcDir() string {
 	_, file, _, ok := runtime.Caller(2)
 	if ok {
 		dir := filepath.Dir(file)
-		if strings.HasSuffix(dir, "gen/cmd/go-mongodb-gen/cli") {
+		if strings.HasSuffix(dir, "cmd/go-mongodb-gen/cli") {
 			// 可能被间接调用，再往上找一层
 			dir = filepath.Dir(filepath.Dir(filepath.Dir(dir)))
 		}
@@ -69,20 +87,22 @@ func determineSrcDir() string {
 func (b *BuildConfig) Run() {
 	srcDir := determineSrcDir()
 
-	if len(b.config.Types) == 0 {
-		// 自动扫描：用源文件目录
+	names := b.types // 用户显式指定的
+
+	if len(names) == 0 {
+		// 自动扫描
 		absDir, _ := filepath.Abs(srcDir)
 		scanResult, err := gen.ScanDir(absDir)
 		if err != nil || scanResult == nil || len(scanResult.Structs) == 0 {
 			return
 		}
 		for _, s := range scanResult.Structs {
-			b.config.AddType(s.Name)
+			names = append(names, s.Name)
 		}
 	}
 
-	for _, name := range b.config.Types {
-		ts, err := gen.ParseStructFromFile(srcDir, name) // ← 用 srcDir，不是 b.config.Dir
+	for _, name := range names {
+		ts, err := gen.ParseStructFromFile(srcDir, name)
 		if err != nil || ts == nil {
 			continue
 		}

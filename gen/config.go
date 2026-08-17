@@ -9,12 +9,11 @@ type MapEntry struct {
 	Key       string
 	FieldType string
 	NewFunc   string
+	EqualAble bool
 }
 
 // Config 生成器配置
 type Config struct {
-	Types         []string
-	typeSet       map[string]bool
 	Maps          map[string]MapEntry
 	PreserveField bool
 	UseJSONTags   bool
@@ -26,37 +25,35 @@ type Config struct {
 // NewConfig 创建默认配置
 func NewConfig() *Config {
 	return &Config{
-		typeSet: make(map[string]bool),
-		Maps:    make(map[string]MapEntry),
+		Maps: make(map[string]MapEntry),
 	}
 }
 
-// AddType 添加要生成的类型名
-func (c *Config) AddType(name string) {
-	if !c.typeSet[name] {
-		c.typeSet[name] = true
-		c.Types = append(c.Types, name)
+// AddMap adds a custom type mapping.
+//
+// typeIdent is the fully qualified type identifier of the SOURCE type:
+//   - Builtin:      "int"
+//   - Same pkg:     "MyType"
+//   - External pkg: "github.com/foo/bar.MyType"
+//
+// fieldType is the fully qualified type identifier of the TARGET field type.
+// newFunc is the fully qualified constructor function name.
+//
+// equalAble should be true if fieldType implements or embeds
+// github.com/xpwu/filter/ComparableFilter (directly or transitively through
+// embedded interfaces/structs). Otherwise, set to false.
+//
+// NOTE: Generic types and generic functions are NOT supported.
+// Not supported:
+//
+//	AddMap("User", "fields.StringField[User]", "fields.NewStringField[User]", true) // generic
+func (c *Config) AddMap(typeIdent, fieldType, newFunc string, equalAble bool) {
+	c.Maps[typeIdent] = MapEntry{
+		Key:       typeIdent,
+		FieldType: fieldType,
+		NewFunc:   newFunc,
+		EqualAble: equalAble,
 	}
-}
-
-// SetTypes 设置要生成的类型名列表
-func (c *Config) SetTypes(names []string) {
-	c.typeSet = make(map[string]bool)
-	c.Types = nil
-	for _, n := range names {
-		c.AddType(n)
-	}
-}
-
-// AddMap 添加自定义类型映射（同包用 key=TypeName）
-func (c *Config) AddMap(key, fieldType, newFunc string) {
-	c.Maps[key] = MapEntry{Key: key, FieldType: fieldType, NewFunc: newFunc}
-}
-
-// AddMapExt 添加自定义类型映射（跨包用 key=pkgPath.TypeName）
-func (c *Config) AddMapExt(pkgPath, typeName, fieldType, newFunc string) {
-	key := pkgPath + "." + typeName
-	c.Maps[key] = MapEntry{Key: key, FieldType: fieldType, NewFunc: newFunc}
 }
 
 // MapsSlice 返回排序后的映射列表

@@ -5,12 +5,26 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/xpwu/go-mongodb/gen"
 )
 
+type stringSlice []string
+
+func (s *stringSlice) String() string {
+	return fmt.Sprintf("%v", *s)
+}
+
+func (s *stringSlice) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 func main() {
-	typeName := flag.String("type", "", "struct name to generate (optional, auto-scan if empty)")
+	var typeNames stringSlice
+	flag.Var(&typeNames, "type", "struct name to generate (can be repeated, auto-scan if empty)")
 	dir := flag.String("out-dir", ".", "output directory for generated files")
 	pkg := flag.String("target-pkg", "", "target package path for output (empty = same as source)")
 	useJSONTags := flag.Bool("use-json-tags", false, "use json tag as bson tag fallback")
@@ -20,8 +34,25 @@ func main() {
 	preserveFieldIgnoreTagErr := flag.Bool("preserve-field-ignore-tag-err", false,
 		"use field name as bson tag when tag is empty, and ignore unsupported tag errors (implies IgnoreTagErr=true)")
 
-	maps := flag.String("map", "", "type mapping: Key,FieldType,NewFunc")
-	mapExts := flag.String("map-ext", "", "extended type mapping: PkgPath,TypeName,FieldType,NewFunc")
+	var mapFlags stringSlice
+	flag.Var(&mapFlags, "add-map",
+		`custom type mapping: Type,FieldType,NewFunc,EqualAble (can be repeated)
+
+Type:       fully qualified source type identifier
+            e.g. "int" or "github.com/foo/bar.MyType"
+FieldType:  fully qualified target field type
+            e.g. "github.com/foo/fields.IntField"
+NewFunc:    fully qualified constructor function
+            e.g. "github.com/foo/fields.NewIntField"
+EqualAble:  "true" or "false"
+            true  -> FieldType implements/embeds github.com/xpwu/filter/ComparableFilter
+            false -> otherwise
+
+Example:
+  -add-map=github.com/foo/bar.GPS,github.com/foo/fields.FloatField,github.com/foo/fields.NewFloatField,false
+  -add-map=github.com/foo/bar.Address,github.com/foo/fields.StringField,github.com/foo/fields.NewStringField,true
+
+NOTE: Generic types and generic functions are NOT supported.`)
 
 	flag.Parse()
 
@@ -33,12 +64,19 @@ func main() {
 	config.PreserveField = *preserveField || *preserveFieldIgnoreTagErr
 	config.IgnoreTagErr = *preserveFieldIgnoreTagErr
 
-	// 解析 -map / -map-ext
-	if *maps != "" {
-		parseMap(config, *maps, false)
-	}
-	if *mapExts != "" {
-		parseMap(config, *mapExts, true)
+	// 解析 -add-map（支持多次）
+	for _, raw := range mapFlags {
+		parts := strings.SplitN(raw, ",", 4)
+		if len(parts) != 4 {
+			fmt.Fprintf(os.Stderr, "-add-map format: Type,FieldType,NewFunc,EqualAble\n  got: %s\n", raw)
+			os.Exit(1)
+		}
+		equalAble, err := strconv.ParseBool(parts[3])
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "-add-map EqualAble must be \"true\" or \"false\", got %q\n", parts[3])
+			os.Exit(1)
+		}
+		config.AddMap(parts[0], parts[1], parts[2], equalAble)
 	}
 
 	// 确定源文件目录（不是输出目录）
@@ -47,8 +85,8 @@ func main() {
 	// 确定要处理的 struct 列表
 	var structNames []string
 
-	if *typeName != "" {
-		structNames = append(structNames, *typeName)
+	if len(typeNames) > 0 {
+		structNames = append(structNames, typeNames...)
 	} else {
 		// 自动扫描：用源文件目录 go:generate 注释下方的 struct
 		absDir, _ := filepath.Abs(srcDir)
@@ -68,7 +106,7 @@ func main() {
 
 	// 逐个生成
 	for _, name := range structNames {
-		ts, err := gen.ParseStructFromFile(srcDir, name) // ← 用 srcDir，不是 *dir
+		ts, err := gen.ParseStructFromFile(srcDir, name)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "parse %s error: %v\n", name, err)
 			os.Exit(1)
@@ -99,38 +137,4 @@ func determineSrcDir() string {
 	// fallback: 当前工作目录
 	dir, _ := os.Getwd()
 	return dir
-}
-
-func parseMap(config *gen.Config, s string, ext bool) {
-	parts := splitComma(s)
-	if ext {
-		if len(parts) != 4 {
-			fmt.Fprintf(os.Stderr, "-map-ext format: PkgPath,TypeName,FieldType,NewFunc\n")
-			os.Exit(1)
-		}
-		config.AddMapExt(parts[0], parts[1], parts[2], parts[3])
-	} else {
-		if len(parts) != 3 {
-			fmt.Fprintf(os.Stderr, "-map format: Key,FieldType,NewFunc\n")
-			os.Exit(1)
-		}
-		config.AddMap(parts[0], parts[1], parts[2])
-	}
-}
-
-func splitComma(s string) []string {
-	var parts []string
-	current := ""
-	for i := 0; i < len(s); i++ {
-		if s[i] == ',' {
-			parts = append(parts, current)
-			current = ""
-		} else {
-			current += string(s[i])
-		}
-	}
-	if current != "" {
-		parts = append(parts, current)
-	}
-	return parts
 }
