@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/xpwu/go-mongodb/gen"
+	"github.com/xpwu/go-mongodb/xopt"
 )
 
 type BuildConfig struct {
@@ -15,9 +16,39 @@ type BuildConfig struct {
 	types  []string
 }
 
-func NewBuildConfig() *BuildConfig {
+// NewBuildConfig receives xopt.Option to configure generation behavior.
+// These Options MUST be consistent with the xopt.Option used in your client code.
+//
+// Example:
+//
+//	  cli.NewBuildConfig(
+//	    xopt.WithPreserveField(true),
+//	  ).OutDir(".").Type("Order").Run()
+//
+// NewBuildConfig 接收 xopt.Option 来配置生成行为。
+// 这些 Option 必须与 client 代码中使用的 xopt.Option 保持一致。
+//
+// 示例：
+//
+//	  cli.NewBuildConfig(
+//	    xopt.WithPreserveField(true),
+//	  ).OutDir(".").Type("Order").Run()
+func NewBuildConfig(opts ...xopt.Option) *BuildConfig {
+	c := gen.NewConfig()
+
+	// apply xopt.Option → 翻译到 gen.Config
+	applied := xopt.GetDefaultOpts()
+	for _, o := range opts {
+		o(applied)
+	}
+	c.PreserveField = applied.PreserveField
+	c.IgnoreTagErr = applied.IgnoreTagErr
+	if applied.BsonOpts != nil {
+		c.UseJSONTags = applied.BsonOpts.UseJSONStructTags
+	}
+
 	return &BuildConfig{
-		config: gen.NewConfig(),
+		config: c,
 	}
 }
 
@@ -33,12 +64,6 @@ func (b *BuildConfig) OutDir(dir string) *BuildConfig {
 
 func (b *BuildConfig) TargetPkg(pkg string) *BuildConfig {
 	b.config.Pkg = pkg
-	return b
-}
-
-func (b *BuildConfig) PreserveField(ignoreTagErr bool) *BuildConfig {
-	b.config.PreserveField = true
-	b.config.IgnoreTagErr = ignoreTagErr
 	return b
 }
 
@@ -68,7 +93,8 @@ func (b *BuildConfig) AddMap(typeIdent, fieldType, newFunc string, equalAble boo
 	// 校验：不支持泛型（通过 [] 判断）
 	for _, p := range []string{typeIdent, fieldType, newFunc} {
 		if strings.Contains(p, "[") {
-			panic(fmt.Sprintf("AddMap does not support generic types or functions: %s", p))
+			fmt.Fprintf(os.Stderr, "AddMap does not support generic types or functions: %s\n", p)
+			os.Exit(1)
 		}
 	}
 
@@ -111,8 +137,13 @@ func (b *BuildConfig) Run() {
 
 	for _, name := range names {
 		ts, err := gen.ParseStructFromFile(srcDir, name)
-		if err != nil || ts == nil {
-			continue
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "parse %s error: %v\n", name, err)
+			os.Exit(1)
+		}
+		if ts == nil {
+			fmt.Fprintf(os.Stderr, "struct %s not found in %s\n", name, srcDir)
+			os.Exit(1)
 		}
 		g := gen.NewGenerator(b.config)
 		g.Generate(ts)

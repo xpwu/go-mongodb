@@ -27,12 +27,16 @@ func main() {
 	flag.Var(&typeNames, "type", "struct name to generate (can be repeated, auto-scan if empty)")
 	dir := flag.String("out-dir", ".", "output directory for generated files")
 	pkg := flag.String("target-pkg", "", "target package path for output (empty = same as source)")
-	useJSONTags := flag.Bool("use-json-tags", false, "use json tag as bson tag fallback")
 
-	preserveField := flag.Bool("preserve-field", false,
-		"use field name as bson tag when tag is empty (implies IgnoreTagErr=false)")
-	preserveFieldIgnoreTagErr := flag.Bool("preserve-field-ignore-tag-err", false,
-		"use field name as bson tag when tag is empty, and ignore unsupported tag errors (implies IgnoreTagErr=true)")
+	useJSONTags := flag.Bool("xopt.with-bson-options-use-json-tags", false,
+		`equivalent to xopt.WithBsonOptions(&go.mongodb.org/mongo-driver/v2/mongo/options.BSONOptions{UseJSONStructTags: true}).
+MUST match the xopt.Options used in your go-mongodb/client/MustGet, GetFromCache or NewClient code.`)
+	preserveField := flag.Bool("xopt.with-preserve-field", false,
+		`equivalent to xopt.WithPreserveField(false).
+MUST match the xopt.Options used in your go-mongodb/client/MustGet, GetFromCache or NewClient code.`)
+	preserveFieldIgnoreTagErr := flag.Bool("xopt.with-preserve-field-ignore-tag-err", false,
+		`equivalent to xopt.WithPreserveField(true).
+MUST match the xopt.Options used in your go-mongodb/client/MustGet, GetFromCache or NewClient code.`)
 
 	var mapFlags stringSlice
 	flag.Var(&mapFlags, "add-map",
@@ -68,19 +72,22 @@ NOTE: Generic types and generic functions are NOT supported.`)
 	for _, raw := range mapFlags {
 		parts := strings.SplitN(raw, ",", 4)
 		if len(parts) != 4 {
-			panic(fmt.Sprintf("-add-map format: Type,FieldType,NewFunc,EqualAble\n  got: %s", raw))
+			fmt.Fprintf(os.Stderr, "-add-map format: Type,FieldType,NewFunc,EqualAble\n  got: %s\n", raw)
+			os.Exit(1)
 		}
 
 		// 校验：不支持泛型（通过 [] 判断）
 		for _, p := range parts[:3] {
 			if strings.Contains(p, "[") {
-				panic(fmt.Sprintf("-add-map does not support generic types or functions: %s", p))
+				fmt.Fprintf(os.Stderr, "-add-map does not support generic types or functions: %s\n", p)
+				os.Exit(1)
 			}
 		}
 
 		equalAble, err := strconv.ParseBool(parts[3])
 		if err != nil {
-			panic(fmt.Sprintf("-add-map EqualAble must be \"true\" or \"false\", got %q", parts[3]))
+			fmt.Fprintf(os.Stderr, "-add-map EqualAble must be \"true\" or \"false\", got %q\n", parts[3])
+			os.Exit(1)
 		}
 		config.AddMap(parts[0], parts[1], parts[2], equalAble)
 	}
