@@ -9,58 +9,49 @@ import (
 	"github.com/xpwu/go-mongodb/gen"
 )
 
-// 用法：
-//   go-mongodb-gen [-type=Name] [-dir=.] [-pkg=output/pkg/path]
-//                  [-map=Key,FieldType,NewFunc] [-map-ext=PkgPath,TypeName,FieldType,NewFunc]
-//                  [-preserve-field] [-use-json-tags] [-ignore-tag-err]
-
 func main() {
 	typeName := flag.String("type", "", "struct name to generate (optional, auto-scan if empty)")
-	dir := flag.String("dir", ".", "source directory to scan")
-	pkg := flag.String("pkg", "", "target package path for output (empty = same as source)")
-	preserveField := flag.Bool("preserve-field", false, "use field name as bson tag when tag is empty")
+	dir := flag.String("out-dir", ".", "output directory for generated files")
+	pkg := flag.String("target-pkg", "", "target package path for output (empty = same as source)")
 	useJSONTags := flag.Bool("use-json-tags", false, "use json tag as bson tag fallback")
-	ignoreTagErr := flag.Bool("ignore-tag-err", false, "ignore unsupported tag errors")
 
-	// -map 可重复
-	maps := flag.String("map", "", "type mapping: Key,FieldType,NewFunc (can be repeated)")
-	mapExts := flag.String("map-ext", "", "extended type mapping: PkgPath,TypeName,FieldType,NewFunc (can be repeated)")
+	preserveField := flag.Bool("preserve-field", false,
+		"use field name as bson tag when tag is empty (implies IgnoreTagErr=false)")
+	preserveFieldIgnoreTagErr := flag.Bool("preserve-field-ignore-tag-err", false,
+		"use field name as bson tag when tag is empty, and ignore unsupported tag errors (implies IgnoreTagErr=true)")
+
+	maps := flag.String("map", "", "type mapping: Key,FieldType,NewFunc")
+	mapExts := flag.String("map-ext", "", "extended type mapping: PkgPath,TypeName,FieldType,NewFunc")
 
 	flag.Parse()
 
 	config := gen.NewConfig()
 	config.Dir = *dir
 	config.Pkg = *pkg
-	config.PreserveField = *preserveField
 	config.UseJSONTags = *useJSONTags
-	config.IgnoreTagErr = *ignoreTagErr
 
-	// 解析 -map（可重复）
-	for _, m := range flag.Args() {
-		_ = m
-	}
+	config.PreserveField = *preserveField || *preserveFieldIgnoreTagErr
+	config.IgnoreTagErr = *preserveFieldIgnoreTagErr
+
+	// 解析 -map / -map-ext
 	if *maps != "" {
 		parseMap(config, *maps, false)
 	}
 	if *mapExts != "" {
 		parseMap(config, *mapExts, true)
 	}
-	// 支持多次 -map
-	for _, arg := range os.Args[1:] {
-		if arg == "-map" || arg == "-map-ext" {
-			break
-		}
-	}
+
+	// 确定源文件目录（不是输出目录）
+	srcDir := determineSrcDir()
 
 	// 确定要处理的 struct 列表
 	var structNames []string
 
 	if *typeName != "" {
-		// 显式指定
 		structNames = append(structNames, *typeName)
 	} else {
-		// 自动扫描 //go:generate 注释下方的 struct
-		absDir, _ := filepath.Abs(*dir)
+		// 自动扫描：用源文件目录 go:generate 注释下方的 struct
+		absDir, _ := filepath.Abs(srcDir)
 		scanResult, err := gen.ScanDir(absDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "scan error: %v\n", err)
@@ -77,13 +68,13 @@ func main() {
 
 	// 逐个生成
 	for _, name := range structNames {
-		ts, err := gen.ParseStructFromFile(*dir, name)
+		ts, err := gen.ParseStructFromFile(srcDir, name) // ← 用 srcDir，不是 *dir
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "parse %s error: %v\n", name, err)
 			os.Exit(1)
 		}
 		if ts == nil {
-			fmt.Fprintf(os.Stderr, "struct %s not found in %s\n", name, *dir)
+			fmt.Fprintf(os.Stderr, "struct %s not found in %s\n", name, srcDir)
 			os.Exit(1)
 		}
 
@@ -93,8 +84,23 @@ func main() {
 	}
 }
 
-// parseMap 解析 -map / -map-ext 参数
-// format: Key,FieldType,NewFunc 或 PkgPath,TypeName,FieldType,NewFunc
+// determineSrcDir 确定源文件所在目录
+func determineSrcDir() string {
+	if goFile := os.Getenv("GOFILE"); goFile != "" {
+		dir := filepath.Dir(goFile)
+		if filepath.IsAbs(dir) {
+			return dir
+		}
+		abs, err := filepath.Abs(dir)
+		if err == nil {
+			return abs
+		}
+	}
+	// fallback: 当前工作目录
+	dir, _ := os.Getwd()
+	return dir
+}
+
 func parseMap(config *gen.Config, s string, ext bool) {
 	parts := splitComma(s)
 	if ext {
