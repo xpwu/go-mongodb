@@ -54,7 +54,8 @@ func NewGenerator(config *Config) *Generator {
 }
 
 // Generate 从入口类型开始生成所有相关代码
-func (g *Generator) Generate(ts TypeSource) {
+// The returned subDir is both the subdirectory path and the sub-package name.
+func (g *Generator) Generate(ts TypeSource) (subDir string) {
 	g.imports = newAllImports()
 	g.typeMap = make(map[string]TypeInfo)
 	g.pendingSts = nil
@@ -77,10 +78,16 @@ func (g *Generator) Generate(ts TypeSource) {
 	}
 
 	// 先生成入口类型
-	g.build(ts)
+	ret := g.build(ts)
 
 	// 处理所有嵌套 struct
 	g.processPending()
+
+	if ret.Field.PkgPath() == g.targetPkg {
+		return ""
+	}
+
+	return strings.TrimPrefix(ret.Field.PkgPath(), g.targetPkg+"/")
 }
 
 // processPending 循环处理嵌套 struct 队列
