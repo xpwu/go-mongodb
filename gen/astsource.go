@@ -723,10 +723,18 @@ func parseAstTypeWithLoader(expr ast.Expr, importMap map[string]string, currentP
 	switch t := expr.(type) {
 	case *ast.Ident:
 		k := kindFromName(t.Name)
+		// 关键：如果 kindFromName 直接识别为内置类型（非 Struct），
+		// 说明这是 Go 原生类型名（int/string/bool 等），pkgPath 必须为空
+		resolvedPkgPath := currentPkgPath
+		if k != reflect.Struct && isBuiltinKind(k) {
+			resolvedPkgPath = ""
+		}
+
 		// 查类型别名表
 		if realKind, ok := typeAliases[t.Name]; ok {
 			k = realKind
 		}
+		
 		// 如果是 struct 且在当前包的 loader 缓存中存在，kind 保持 Struct
 		if k == reflect.Struct {
 			if loader != nil {
@@ -739,7 +747,7 @@ func parseAstTypeWithLoader(expr ast.Expr, importMap map[string]string, currentP
 		}
 		return &astTypeSource{
 			name:    t.Name,
-			pkgPath: currentPkgPath,
+			pkgPath: resolvedPkgPath,
 			kind:    k,
 			loader:  loader,
 		}
@@ -850,4 +858,16 @@ func findGoModDir(dir string) string {
 		}
 		current = parent
 	}
+}
+
+// isBuiltinKind 判断是否为 Go 内置基本类型
+func isBuiltinKind(k reflect.Kind) bool {
+	switch k {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64,
+		reflect.String, reflect.Bool:
+		return true
+	}
+	return false
 }
