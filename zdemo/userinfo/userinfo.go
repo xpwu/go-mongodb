@@ -9,6 +9,12 @@ import (
 
 type GPS float64
 
+type GPSes []GPS
+
+type GPSesA = GPSes
+
+type BSOND = bson.D
+
 type Wx struct {
 	Age    *bson.Decimal128
 	Time   *int
@@ -22,15 +28,19 @@ type Wx struct {
 //go:generate go run github.com/xpwu/go-mongodb/cmd/gomongodbgen
 
 type UserInfo struct {
-	ID    string `bson:"_id"`
-	Login int    `bson:"Login"`
-	Pass  []int
-	Wx    *Wx
-	Wx3   Wx
-	Ws    []Wx
-	Pass2 [][]int16
-	InWx  Wx `bson:"inWx,inline"`
-	Gps   GPS
+	ID     string `bson:"_id"`
+	Login  int    `bson:"Login"`
+	Pass   []int
+	Wx     *Wx
+	Wx3    Wx
+	Ws     []Wx
+	Pass2  [][]int16
+	InWx   Wx `bson:"inWx,inline"`
+	Gps    GPS
+	Gpses  GPSes
+	GpsesA GPSesA
+	BsonD  bson.D
+	BSON_D BSOND
 }
 
 //var filter2 = UserInfoDoc.AgeF().
