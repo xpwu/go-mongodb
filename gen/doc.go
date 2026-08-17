@@ -59,6 +59,33 @@
 // 在生成过程中，只有 Kind == reflect.Struct 的类型才会被加入 pendingSts 队列，
 // 触发独立的 Field 文件生成。Slice、Ptr、基本类型、Interface 都不生成新文件。
 //
+// # 反射适配层（reflectsource.go）
+//
+// reflectsource.go 实现了 TypeSource / FieldSource 接口，把 reflect.Type
+// 适配为与 AST 版相同的接口，使得 generator.go 的 Generate(ts TypeSource)
+// 方法可以统一接受两种输入源。
+//
+// ## 使用方式
+//
+//	import "github.com/xpwu/go-mongodb/gen"
+//	import "reflect"
+//
+//	// 把 reflect.Type 适配成 TypeSource
+//	ts := gen.ReflectTypeSource(reflect.TypeOf(UserInfo{}))
+//
+//	// 通过 generator 统一入口生成
+//	g := gen.NewGenerator(&gen.Config{Dir: "output", Pkg: "mypkg"})
+//	subDir := g.Generate(ts)
+//
+// ## 反射版天然具备的能力
+//
+//   - type A = C 穿透：reflect.Type 中 A 和 C 是同一个对象，Elem() 直接返回目标类型
+//   - type D []E 切片展开：reflect.Type.Elem() 直接返回 E 的 reflect.Type
+//   - interface 识别：reflect.Type.Kind() == reflect.Interface 直接可用
+//
+// 因此 reflectsource.go 本身不需要额外的别名解析逻辑，只需要正确实现
+// TypeSource 接口的 6 个方法即可。
+//
 // # AST 解析关键设计
 //
 // ## 递归加载的缓存策略
@@ -66,6 +93,12 @@
 // LoadPackage 在 parsePackageDir 完成之后、填充 types/aliases 之前，
 // 将 pkg 放入 loaded 缓存。这样在填充过程中如果遇到需要递归加载同一包
 // 的情况（如解析 type D []E 时需要加载 bson 包），能命中缓存而不会死循环。
+//
+// ## parsePackageDir 统一初始化
+//
+// parsePackageDir 负责创建完整初始化的 loadedPackage（所有 map 字段都在
+// parsePackageDir 里 make），LoadPackage 不再重复 make。这样不会重复分配
+// 内存，也不会有人忘记加新字段。
 //
 // ## typeElems 的作用
 //
