@@ -19,6 +19,8 @@ type Wx struct {
 	Name   elsetype.FullName
 }
 
+//go:generate go run github.com/xpwu/go-mongodb/cmd/gomongodbgen
+
 type UserInfo struct {
 	ID    string `bson:"_id"`
 	Login int    `bson:"Login"`
