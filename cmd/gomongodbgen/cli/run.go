@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -64,6 +65,13 @@ func (b *BuildConfig) PreserveField(ignoreTagErr bool) *BuildConfig {
 //
 // NOTE: Generic types and generic functions are NOT supported.
 func (b *BuildConfig) AddMap(typeIdent, fieldType, newFunc string, equalAble bool) *BuildConfig {
+	// 校验：不支持泛型（通过 [] 判断）
+	for _, p := range []string{typeIdent, fieldType, newFunc} {
+		if strings.Contains(p, "[") {
+			panic(fmt.Sprintf("AddMap does not support generic types or functions: %s", p))
+		}
+	}
+
 	b.config.AddMap(typeIdent, fieldType, newFunc, equalAble)
 	return b
 }
