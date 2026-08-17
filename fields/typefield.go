@@ -172,3 +172,7 @@ type ComparableStructField[T any] interface {
 	filter.ComparableFilter[T]
 	updater.BaseUpdater[T]
 }
+
+func NewBaseStructField[T any](name string) BaseStructField[T] {
+	return &BaseField[T]{name}
+}
