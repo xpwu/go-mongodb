@@ -103,6 +103,11 @@ func (g *Generator) processPending() {
 		}
 		g.visited[key] = true
 
+		// 防御性检查：只处理 struct 类型
+		if ts.Kind() != reflect.Struct {
+			continue
+		}
+
 		// 确保字段已加载（AST 版会懒加载，反射版空操作）
 		ts.EnsureFields()
 
@@ -311,6 +316,16 @@ func (g *Generator) buildKind(ts TypeSource) (TypeInfo, bool) {
 		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("ComputableField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewComputableField[%s]", typeName), pkg: fieldsPkg}, EqualAble: false}, true
 	case reflect.String:
 		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("LikeStringField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewLikeStringField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Interface:
+		// any / interface{} → 使用 BaseStructField
+		// 防御性说明：interface 类型无法在编译期确定具体类型，
+		// 因此只能生成最通用的 BaseStructField，不支持 EqualAble 比较操作。
+		return TypeInfo{
+			T:         ts,
+			Field:     typeRef{name: fmt.Sprintf("BaseStructField[%s]", typeName), pkg: fieldsPkg},
+			NewField:  typeRef{name: fmt.Sprintf("NewBaseStructField[%s]", typeName), pkg: fieldsPkg},
+			EqualAble: false,
+		}, true
 	default:
 		return TypeInfo{}, false
 	}
@@ -592,24 +607,3 @@ func indentLines(s string, indents int) string {
 	}
 	return strings.Join(lines, "\n")
 }
-
-//func getRuntimeInfo(skip int) (pkg, dir string) {
-//	pc, file, _, ok := runtime.Caller(skip)
-//	if ok {
-//		fName := runtime.FuncForPC(pc).Name()
-//		fName = before(fName, "[")
-//		f := strings.FieldsFunc(fName, func(r rune) bool {
-//			return r == '.'
-//		})
-//		pkg = strings.Join(f[:len(f)-1], ".")
-//		dir = path.Dir(file)
-//	}
-//	return
-//}
-//
-//func before(s, sep string) string {
-//	if i := strings.Index(s, sep); i != -1 {
-//		return s[:i]
-//	}
-//	return s
-//}

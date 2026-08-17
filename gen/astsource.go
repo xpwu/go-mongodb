@@ -6,12 +6,11 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"golang.org/x/mod/modfile"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
-
-	"github.com/xpwu/go-mongodb/x"
 )
 
 // ─── TypeLoader：负责从磁盘加载任意包的 AST ─────────────────
@@ -23,13 +22,35 @@ var globalLoader *TypeLoader
 func GetLoader() *TypeLoader {
 	if globalLoader == nil {
 		l := &TypeLoader{
-			loaded: make(map[string]*loadedPackage),
+			loaded:      make(map[string]*loadedPackage),
+			depVersions: make(map[string]string),
 		}
-		// 尝试找到 go.mod
 		dir, _ := os.Getwd()
 		l.goModDir = findGoModDir(dir)
 		if l.goModDir != "" {
 			l.modulePath, _ = readModulePath(l.goModDir)
+			// 从 go.mod 解析依赖版本
+			goModPath := filepath.Join(l.goModDir, "go.mod")
+			if data, err := os.ReadFile(goModPath); err == nil {
+				if modFile, err := modfile.Parse(goModPath, data, nil); err == nil {
+					for _, r := range modFile.Require {
+						l.depVersions[r.Mod.Path] = r.Mod.Version
+					}
+				}
+			}
+		}
+		// 确定 GOMODCACHE
+		l.gomodcache = os.Getenv("GOMODCACHE")
+		if l.gomodcache == "" {
+			gopath := os.Getenv("GOPATH")
+			if gopath == "" {
+				if home, err := os.UserHomeDir(); err == nil {
+					gopath = filepath.Join(home, "go")
+				}
+			}
+			if gopath != "" {
+				l.gomodcache = filepath.Join(gopath, "pkg", "mod")
+			}
 		}
 		globalLoader = l
 	}
@@ -43,18 +64,24 @@ func ResetLoader() {
 
 // TypeLoader 管理所有已加载包的 AST 缓存
 type TypeLoader struct {
-	loaded     map[string]*loadedPackage // key: pkgPath
+	// key: pkgPath
+	loaded     map[string]*loadedPackage
 	modulePath string
 	goModDir   string
+	gomodcache string
+	// modulePath → version, parsed from go.mod require block
+	depVersions map[string]string
 }
 
 // loadedPackage 一个已加载包的信息
 type loadedPackage struct {
-	fset      *token.FileSet
-	files     []*ast.File
-	importMap map[string]string          // alias → pkgPath
-	aliases   map[string]reflect.Kind    // type alias: Name → kind
-	types     map[string]*ast.StructType // type Name → StructType
+	fset         *token.FileSet
+	files        []*ast.File
+	importMap    map[string]string          // alias → pkgPath
+	aliases      map[string]reflect.Kind    // type alias: Name → kind
+	typeElems    map[string]*astTypeSource  // 复合类型别名的 elem，如 type D []E 的 elem 是 E
+	types        map[string]*ast.StructType // type Name → StructType
+	aliasTargets map[string]*astTypeSource  // 类型别名声明 type A = C 的目标类型
 }
 
 // LoadPackage 加载指定包路径的所有 AST 信息（带缓存）
@@ -71,14 +98,15 @@ func (l *TypeLoader) LoadPackage(pkgPath string) (*loadedPackage, error) {
 		return nil, fmt.Errorf("cannot find directory for package %s", pkgPath)
 	}
 
+	var err error
 	pkg, err := l.parsePackageDir(pkgDir)
 	if err != nil {
 		return nil, err
 	}
 
-	pkg.importMap = make(map[string]string)
-	pkg.aliases = make(map[string]reflect.Kind)
-	pkg.types = make(map[string]*ast.StructType)
+	// ─── 关键：在 parsePackageDir 之后、填充之前，把 pkg 放入缓存 ───
+	// 这样递归调用 LoadPackage 时能命中缓存，但不会拿到空的占位对象
+	l.loaded[pkgPath] = pkg
 
 	for _, file := range pkg.files {
 		// 收集 import
@@ -102,19 +130,34 @@ func (l *TypeLoader) LoadPackage(pkgPath string) (*loadedPackage, error) {
 				if !ok {
 					continue
 				}
+				// 类型别名声明：type A = C，记录目标类型并跳过
+				if typeSpec.Assign != token.NoPos {
+					elem := parseAstTypeWithLoader(typeSpec.Type, pkg.importMap, pkgPath, pkg.aliases, l)
+					pkg.aliasTargets[typeSpec.Name.Name] = elem
+					continue
+				}
 				// 类型别名：type GPS float64
 				if ident, ok := typeSpec.Type.(*ast.Ident); ok {
 					pkg.aliases[typeSpec.Name.Name] = kindFromName(ident.Name)
+				}
+				// 类型别名：type D []E（右侧是 slice）
+				if arrayType, ok := typeSpec.Type.(*ast.ArrayType); ok {
+					pkg.aliases[typeSpec.Name.Name] = reflect.Slice
+					elem := parseAstTypeWithLoader(arrayType.Elt, pkg.importMap, pkgPath, pkg.aliases, l)
+					pkg.typeElems[typeSpec.Name.Name] = elem
 				}
 				// struct 定义
 				if st, ok := typeSpec.Type.(*ast.StructType); ok {
 					pkg.types[typeSpec.Name.Name] = st
 				}
+				// interface 定义：type A interface { Do() }
+				if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
+					pkg.aliases[typeSpec.Name.Name] = reflect.Interface
+				}
 			}
 		}
 	}
 
-	l.loaded[pkgPath] = pkg
 	return pkg, nil
 }
 
@@ -136,8 +179,13 @@ func (l *TypeLoader) parsePackageDir(dir string) (*loadedPackage, error) {
 	}
 
 	pkg := &loadedPackage{
-		fset:  fset,
-		files: make([]*ast.File, 0),
+		fset:         fset,
+		files:        make([]*ast.File, 0),
+		importMap:    make(map[string]string),
+		aliases:      make(map[string]reflect.Kind),
+		typeElems:    make(map[string]*astTypeSource),
+		types:        make(map[string]*ast.StructType),
+		aliasTargets: make(map[string]*astTypeSource),
 	}
 	for _, p := range pkgs {
 		for _, file := range p.Files {
@@ -160,31 +208,37 @@ func (l *TypeLoader) resolvePkgDir(pkgPath string) string {
 			return candidate
 		}
 	}
-	// 2. GOPATH
-	if gopath := os.Getenv("GOPATH"); gopath != "" {
+	// 2. GOPATH/src
+	gopath := os.Getenv("GOPATH")
+	if gopath == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			gopath = filepath.Join(home, "go")
+		}
+	}
+	if gopath != "" {
 		candidate := filepath.Join(gopath, "src", pkgPath)
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
 	}
-	// 3. GOMODCACHE
-	if gomodcache := os.Getenv("GOMODCACHE"); gomodcache != "" {
-		parts := strings.Split(pkgPath, "/")
-		if len(parts) >= 3 {
-			modName := strings.Join(parts[:3], "/")
-			modDir := filepath.Join(gomodcache, modName)
-			if entries, err := os.ReadDir(modDir); err == nil {
-				for _, e := range entries {
-					if e.IsDir() {
-						continue
-					}
-					fullModPath := filepath.Join(gomodcache, modName+"@"+e.Name())
-					subRel := strings.Join(parts[3:], "/")
-					candidate := filepath.Join(fullModPath, subRel)
-					if _, err := os.Stat(candidate); err == nil {
-						return candidate
-					}
+	// 3. GOMODCACHE (优先用环境变量，fallback 到 $GOPATH/pkg/mod)
+	gomodcache := l.gomodcache
+	if gomodcache == "" {
+		gomodcache = os.Getenv("GOMODCACHE")
+	}
+	if gomodcache == "" && gopath != "" {
+		gomodcache = filepath.Join(gopath, "pkg", "mod")
+	}
+	if gomodcache != "" {
+		for mod, ver := range l.depVersions {
+			if pkgPath == mod || strings.HasPrefix(pkgPath, mod+"/") {
+				subRel := strings.TrimPrefix(pkgPath, mod+"/")
+				candidate := filepath.Join(l.gomodcache, mod+"@"+ver, subRel)
+				if _, err := os.Stat(candidate); err == nil {
+					return candidate
 				}
+				// 找到精确匹配就停，不需要继续遍历其他依赖
+				break
 			}
 		}
 	}
@@ -256,7 +310,6 @@ type astFieldSource struct {
 	name     string
 	typ      *astTypeSource
 	tag      string
-	st       *x.StructTags
 	exported bool
 }
 
@@ -643,11 +696,13 @@ func registerFileToLoader(loader *TypeLoader, pkgPath string, file *ast.File, fi
 	if !ok {
 		// 创建一个空的 loadedPackage 占位
 		pkg = &loadedPackage{
-			fset:      token.NewFileSet(),
-			files:     make([]*ast.File, 0),
-			importMap: make(map[string]string),
-			aliases:   make(map[string]reflect.Kind),
-			types:     make(map[string]*ast.StructType),
+			fset:         token.NewFileSet(),
+			files:        make([]*ast.File, 0),
+			importMap:    make(map[string]string),
+			aliases:      make(map[string]reflect.Kind),
+			typeElems:    make(map[string]*astTypeSource),
+			types:        make(map[string]*ast.StructType),
+			aliasTargets: make(map[string]*astTypeSource),
 		}
 		loader.loaded[pkgPath] = pkg
 	}
@@ -682,11 +737,25 @@ func registerFileToLoader(loader *TypeLoader, pkgPath string, file *ast.File, fi
 			if !ok {
 				continue
 			}
+			// 类型别名声明：type A = C，记录目标类型并跳过
+			if typeSpec.Assign != token.NoPos {
+				elem := parseAstTypeWithLoader(typeSpec.Type, pkg.importMap, pkgPath, pkg.aliases, loader)
+				pkg.aliasTargets[typeSpec.Name.Name] = elem
+				continue
+			}
 			if ident, ok := typeSpec.Type.(*ast.Ident); ok {
 				pkg.aliases[typeSpec.Name.Name] = kindFromName(ident.Name)
 			}
+			if arrayType, ok := typeSpec.Type.(*ast.ArrayType); ok {
+				pkg.aliases[typeSpec.Name.Name] = reflect.Slice
+				elem := parseAstTypeWithLoader(arrayType.Elt, pkg.importMap, pkgPath, pkg.aliases, loader)
+				pkg.typeElems[typeSpec.Name.Name] = elem
+			}
 			if st, ok := typeSpec.Type.(*ast.StructType); ok {
 				pkg.types[typeSpec.Name.Name] = st
+			}
+			if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
+				pkg.aliases[typeSpec.Name.Name] = reflect.Interface
 			}
 		}
 	}
@@ -706,8 +775,20 @@ func collectTypeAliases(file *ast.File) map[string]reflect.Kind {
 			if !ok {
 				continue
 			}
+			// 跳过类型别名声明（type A = C）
+			if typeSpec.Assign != token.NoPos {
+				continue
+			}
 			if ident, ok := typeSpec.Type.(*ast.Ident); ok {
 				aliases[typeSpec.Name.Name] = kindFromName(ident.Name)
+			}
+			if _, ok := typeSpec.Type.(*ast.ArrayType); ok {
+				aliases[typeSpec.Name.Name] = reflect.Slice
+				// 注意：collectTypeAliases 没有 loader，无法解析 elem
+				// 但 aliases 只需要 kind，elem 在 registerFileToLoader 里处理
+			}
+			if _, ok := typeSpec.Type.(*ast.InterfaceType); ok {
+				aliases[typeSpec.Name.Name] = reflect.Interface
 			}
 		}
 	}
@@ -742,10 +823,9 @@ func parseAstFieldWithLoader(f *ast.Field, importMap map[string]string, currentP
 	}
 
 	return &astFieldSource{
-		name: name,
-		typ:  parseAstTypeWithLoader(f.Type, importMap, currentPkgPath, typeAliases, loader),
-		tag:  tagStr,
-		//st:       st,
+		name:     name,
+		typ:      parseAstTypeWithLoader(f.Type, importMap, currentPkgPath, typeAliases, loader),
+		tag:      tagStr,
 		exported: name != "" && name[0] >= 'A' && name[0] <= 'Z',
 	}
 }
@@ -754,6 +834,15 @@ func parseAstFieldWithLoader(f *ast.Field, importMap map[string]string, currentP
 func parseAstTypeWithLoader(expr ast.Expr, importMap map[string]string, currentPkgPath string, typeAliases map[string]reflect.Kind, loader *TypeLoader) *astTypeSource {
 	switch t := expr.(type) {
 	case *ast.Ident:
+		// 先检查是否是类型别名声明（type A = C），如果是，直接穿透到目标类型
+		if loader != nil {
+			if pkg, err := loader.LoadPackage(currentPkgPath); err == nil {
+				if target, ok := pkg.aliasTargets[t.Name]; ok {
+					return target
+				}
+			}
+		}
+
 		k := kindFromName(t.Name)
 		// 关键：如果 kindFromName 直接识别为内置类型（非 Struct），
 		// 说明这是 Go 原生类型名（int/string/bool 等），pkgPath 必须为空
@@ -767,10 +856,25 @@ func parseAstTypeWithLoader(expr ast.Expr, importMap map[string]string, currentP
 			k = realKind
 		}
 
-		// 如果是 struct 且在当前包的 loader 缓存中存在，kind 保持 Struct
+		// 如果是 Slice 别名（如 type GPSes []GPS），从 loader 取 elem
+		var elem *astTypeSource
+		if k == reflect.Slice && loader != nil {
+			if pkg, err := loader.LoadPackage(currentPkgPath); err == nil {
+				if e, ok := pkg.typeElems[t.Name]; ok {
+					elem = e
+				}
+			}
+		}
+
+		// 如果是 struct，查 loader 缓存确认真实类型
 		if k == reflect.Struct {
 			if loader != nil {
 				if pkg, err := loader.LoadPackage(currentPkgPath); err == nil {
+					// 先查 aliases（处理 type A interface{ Do() } 等情况）
+					if realKind, ok := pkg.aliases[t.Name]; ok {
+						k = realKind
+					}
+					// 再查 types（处理真正的 struct）
 					if _, ok := pkg.types[t.Name]; ok {
 						k = reflect.Struct
 					}
@@ -781,6 +885,7 @@ func parseAstTypeWithLoader(expr ast.Expr, importMap map[string]string, currentP
 			name:    t.Name,
 			pkgPath: resolvedPkgPath,
 			kind:    k,
+			elem:    elem,
 			loader:  loader,
 		}
 	case *ast.SelectorExpr:
@@ -790,20 +895,35 @@ func parseAstTypeWithLoader(expr ast.Expr, importMap map[string]string, currentP
 		}
 		fullPkgPath := importMap[pkgAlias]
 
-		// 尝试解析为内置类型（如 bson.ObjectID）
+		// 尝试解析为内置类型（如 bson.ObjectID）或复合类型别名（如 bson.D）
 		k := reflect.Struct // 默认当作 struct
+		var elem *astTypeSource
 		if loader != nil {
 			if pkg, err := loader.LoadPackage(fullPkgPath); err == nil {
 				if realKind, ok := pkg.aliases[t.Sel.Name]; ok {
 					k = realKind
 				}
+				// 防御性读取：如果这是复合类型别名（如 type D []E），需要拿到 elem
+				// 这样 bson.D 的 Elem() 才能返回 bson.E，buildSlice 才能正确构造
+				if pkg.typeElems != nil {
+					if e, ok := pkg.typeElems[t.Sel.Name]; ok {
+						elem = e
+					}
+				}
 			}
+		}
+
+		// 防御性检查：如果选择器名字是 any 或 interface{}，强制设为 Interface
+		if t.Sel.Name == "any" || t.Sel.Name == "interface{}" {
+			k = reflect.Interface
+			fullPkgPath = "" // any 不属于任何包
 		}
 
 		return &astTypeSource{
 			name:    t.Sel.Name,
 			pkgPath: fullPkgPath,
 			kind:    k,
+			elem:    elem,
 			loader:  loader,
 		}
 	case *ast.StarExpr:
@@ -849,6 +969,8 @@ func kindFromName(name string) reflect.Kind {
 		return reflect.String
 	case "bool":
 		return reflect.Bool
+	case "any", "interface{}":
+		return reflect.Interface
 	default:
 		return reflect.Struct
 	}
@@ -898,7 +1020,7 @@ func isBuiltinKind(k reflect.Kind) bool {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
 		reflect.Float32, reflect.Float64,
-		reflect.String, reflect.Bool:
+		reflect.String, reflect.Bool, reflect.Interface:
 		return true
 	}
 	return false
