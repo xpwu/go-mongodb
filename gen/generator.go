@@ -66,12 +66,17 @@ func (g *Generator) Generate(ts TypeSource) {
 	g.visited = make(map[string]bool)
 
 	// 初始化 targetPkg
-	if g.targetPkg == "" || g.outputDir == "" {
-		if g.config.Dir == "" || g.config.Pkg == "" {
-			g.targetPkg = ts.PkgPath()
+	if g.outputDir == "" {
+		if g.config.Dir == "" {
 			g.outputDir = "."
 		} else {
 			g.outputDir = g.config.Dir
+		}
+	}
+	if g.targetPkg == "" {
+		if g.config.Pkg == "" {
+			g.targetPkg = ts.PkgPath()
+		} else {
 			g.targetPkg = g.config.Pkg
 		}
 	}

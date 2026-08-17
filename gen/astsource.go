@@ -470,15 +470,29 @@ func parseStructFromFile(filePath, structName string, loader *TypeLoader) (TypeS
 	importMap := buildImportMap(file)
 	typeAliases := collectTypeAliases(file)
 
+	// 获取完整 pkgPath
 	pkgPath := os.Getenv("GOPACKAGE")
-	if pkgPath == "" {
+	if pkgPath == "" || !strings.Contains(pkgPath, "/") {
+		// 先尝试从 go.mod 推导
 		modulePath, _ := readModulePath(filepath.Dir(filePath))
 		if modulePath != "" {
-			rel, _ := filepath.Rel(findGoModDir(filepath.Dir(filePath)), filepath.Dir(filePath))
-			if rel != "." {
-				pkgPath = modulePath + "/" + filepath.ToSlash(rel)
+			goModDir := findGoModDir(filepath.Dir(filePath))
+			if goModDir != "" {
+				rel, _ := filepath.Rel(goModDir, filepath.Dir(filePath))
+				if rel != "." {
+					pkgPath = modulePath + "/" + filepath.ToSlash(rel)
+				} else {
+					pkgPath = modulePath
+				}
 			} else {
 				pkgPath = modulePath
+			}
+		}
+
+		// 如果还是没拼出来（go.mod 找不到），用 packages 包推断
+		if pkgPath == "" || !strings.Contains(pkgPath, "/") {
+			if inferred, err := InferPackagePath(filepath.Dir(filePath)); err == nil && inferred != "" {
+				pkgPath = inferred
 			}
 		}
 	}
@@ -537,11 +551,29 @@ func parseStructFromDir(dir, structName string, loader *TypeLoader) (TypeSource,
 		return nil, err
 	}
 
+	// 获取完整 pkgPath（和 parseStructFromFile 同样的逻辑）
 	pkgPath := os.Getenv("GOPACKAGE")
-	if pkgPath == "" {
+	if pkgPath == "" || !strings.Contains(pkgPath, "/") {
 		modulePath, _ := readModulePath(dir)
 		if modulePath != "" {
-			pkgPath = modulePath
+			goModDir := findGoModDir(dir)
+			if goModDir != "" {
+				rel, _ := filepath.Rel(goModDir, dir)
+				if rel != "." && !strings.HasPrefix(rel, "..") {
+					pkgPath = modulePath + "/" + filepath.ToSlash(rel)
+				} else {
+					pkgPath = modulePath
+				}
+			} else {
+				pkgPath = modulePath
+			}
+		}
+
+		// fallback：用 packages 推断
+		if pkgPath == "" || !strings.Contains(pkgPath, "/") {
+			if inferred, err := InferPackagePath(dir); err == nil && inferred != "" {
+				pkgPath = inferred
+			}
 		}
 	}
 
@@ -734,7 +766,7 @@ func parseAstTypeWithLoader(expr ast.Expr, importMap map[string]string, currentP
 		if realKind, ok := typeAliases[t.Name]; ok {
 			k = realKind
 		}
-		
+
 		// 如果是 struct 且在当前包的 loader 缓存中存在，kind 保持 Struct
 		if k == reflect.Struct {
 			if loader != nil {
