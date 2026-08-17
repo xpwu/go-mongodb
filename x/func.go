@@ -21,6 +21,14 @@ func BaseTypeName(t reflect.Type) string {
 	return name
 }
 
+func BaseTypeNameFromName(name string) string {
+	// 去掉泛型参数部分（如果有）
+	if idx := strings.Index(name, "["); idx != -1 {
+		return name[:idx]
+	}
+	return name
+}
+
 func LastSubPath(path string) string {
 	// 1. 获取 '/' 分隔的最后一段
 	if idx := strings.LastIndex(path, "/"); idx != -1 {

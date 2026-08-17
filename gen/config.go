@@ -28,7 +28,6 @@ func NewConfig() *Config {
 	return &Config{
 		typeSet: make(map[string]bool),
 		Maps:    make(map[string]MapEntry),
-		Dir:     ".",
 	}
 }
 

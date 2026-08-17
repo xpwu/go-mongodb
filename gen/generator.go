@@ -50,11 +50,11 @@ type Generator struct {
 // NewGenerator 创建生成器
 func NewGenerator(config *Config) *Generator {
 	return &Generator{
-		config:    config,
-		outputDir: config.Dir,
-		targetPkg: config.Pkg,
-		typeMap:   make(map[string]TypeInfo),
-		visited:   make(map[string]bool),
+		config: config,
+		//outputDir: config.Dir,
+		//targetPkg: config.Pkg,
+		typeMap: make(map[string]TypeInfo),
+		visited: make(map[string]bool),
 	}
 }
 
@@ -64,6 +64,17 @@ func (g *Generator) Generate(ts TypeSource) {
 	g.typeMap = make(map[string]TypeInfo)
 	g.pendingSts = nil
 	g.visited = make(map[string]bool)
+
+	// 初始化 targetPkg
+	if g.targetPkg == "" || g.outputDir == "" {
+		if g.config.Dir == "" || g.config.Pkg == "" {
+			g.targetPkg = ts.PkgPath()
+			g.outputDir = "."
+		} else {
+			g.outputDir = g.config.Dir
+			g.targetPkg = g.config.Pkg
+		}
+	}
 
 	// 先生成入口类型
 	g.build(ts)
@@ -371,11 +382,7 @@ func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 
 	thisPkg := g.targetPkg
 	thisDir := g.outputDir
-	thisName := ts.Name()
-
-	if thisPkg == "" {
-		thisPkg = ts.PkgPath()
-	}
+	thisName := x.BaseTypeNameFromName(ts.Name())
 
 	if g.targetPkg != "" && ts.PkgPath() != "" && g.targetPkg != ts.PkgPath() {
 		subDir := x.SanitizePackageName(x.LastSubPath(ts.PkgPath()) + "_" + base6408(ts.PkgPath()))
