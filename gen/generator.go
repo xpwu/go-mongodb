@@ -2,14 +2,11 @@ package gen
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/base64"
 	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"text/template"
 
@@ -50,9 +47,7 @@ type Generator struct {
 // NewGenerator 创建生成器
 func NewGenerator(config *Config) *Generator {
 	return &Generator{
-		config: config,
-		//outputDir: config.Dir,
-		//targetPkg: config.Pkg,
+		config:  config,
 		typeMap: make(map[string]TypeInfo),
 		visited: make(map[string]bool),
 	}
@@ -278,10 +273,7 @@ func (g *Generator) buildKind(ts TypeSource) (TypeInfo, bool) {
 	if ts.PkgPath() != "" {
 		typeAlias = g.imports.add(ts.PkgPath())
 	}
-	typeName := ts.Name()
-	if typeAlias != "" {
-		typeName = typeAlias + "." + ts.Name()
-	}
+	typeName := addDot(typeAlias) + ts.Name()
 
 	switch ts.Kind() {
 	case reflect.Bool:
@@ -320,20 +312,17 @@ func (g *Generator) buildKind(ts TypeSource) (TypeInfo, bool) {
 // ─── buildSlice ─────────────────────────────────────────────
 
 func (g *Generator) buildSlice(ts TypeSource) (TypeInfo, bool) {
-	elem := ts.Elem()
-	if elem == nil {
-		return TypeInfo{}, false
-	}
-
-	// 计算维度
-	dim := 0
-	current := ts
+	// 计算维度，同时找到最内层元素类型
+	dim := 1
+	current := ts.Elem()
 	for current != nil && (current.Kind() == reflect.Slice || current.Kind() == reflect.Array) {
 		dim++
 		current = current.Elem()
 	}
+	innermost := current // 最内层元素类型，如 int16
 
-	eft := g.build(elem)
+	// build 最内层元素类型（和反射版一致）
+	eft := g.build(innermost)
 
 	arrPkg := g.imports.add("github.com/xpwu/go-mongodb/fields")
 
@@ -373,6 +362,7 @@ func (g *Generator) buildSlice(ts TypeSource) (TypeInfo, bool) {
 		}
 	}
 
+	// elemT 从最内层类型名开始（和反射版逐行对应）
 	elemT := addDot(g.imports.add(eft.T.PkgPath())) + eft.T.Name()
 	elemField := addDot(g.imports.add(eft.Field.PkgPath())) + eft.Field.Name()
 	newElemField := addDot(g.imports.add(eft.NewField.PkgPath())) + eft.NewField.Name()
@@ -422,7 +412,7 @@ func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 	thisName := x.BaseTypeNameFromName(ts.Name())
 
 	if g.targetPkg != "" && ts.PkgPath() != "" && g.targetPkg != ts.PkgPath() {
-		subDir := x.SanitizePackageName(x.LastSubPath(ts.PkgPath()) + "_" + base6408(ts.PkgPath()))
+		subDir := x.SanitizePackageName(x.LastSubPath(ts.PkgPath()) + "_" + x.Base6408(ts.PkgPath()))
 		if strings.HasPrefix(ts.PkgPath(), g.targetPkg+"/") {
 			subDir = strings.TrimPrefix(ts.PkgPath(), g.targetPkg+"/")
 		}
@@ -596,29 +586,23 @@ func indentLines(s string, indents int) string {
 	return strings.Join(lines, "\n")
 }
 
-func base6408(s string) string {
-	sha256v := sha256.Sum256([]byte(s))
-	r := base64.StdEncoding.EncodeToString(sha256v[:])
-	return r[0:8]
-}
-
-func getRuntimeInfo(skip int) (pkg, dir string) {
-	pc, file, _, ok := runtime.Caller(skip)
-	if ok {
-		fName := runtime.FuncForPC(pc).Name()
-		fName = before(fName, "[")
-		f := strings.FieldsFunc(fName, func(r rune) bool {
-			return r == '.'
-		})
-		pkg = strings.Join(f[:len(f)-1], ".")
-		dir = path.Dir(file)
-	}
-	return
-}
-
-func before(s, sep string) string {
-	if i := strings.Index(s, sep); i != -1 {
-		return s[:i]
-	}
-	return s
-}
+//func getRuntimeInfo(skip int) (pkg, dir string) {
+//	pc, file, _, ok := runtime.Caller(skip)
+//	if ok {
+//		fName := runtime.FuncForPC(pc).Name()
+//		fName = before(fName, "[")
+//		f := strings.FieldsFunc(fName, func(r rune) bool {
+//			return r == '.'
+//		})
+//		pkg = strings.Join(f[:len(f)-1], ".")
+//		dir = path.Dir(file)
+//	}
+//	return
+//}
+//
+//func before(s, sep string) string {
+//	if i := strings.Index(s, sep); i != -1 {
+//		return s[:i]
+//	}
+//	return s
+//}
