@@ -675,7 +675,7 @@ type {{.Name}}Field interface {
 	{{.MethodName}}F() {{.FieldName}}
 {{- end}}
 {{- range .Inlines}}
-	{{.FiledName}}Inline
+	{{.FieldName}}Inline
 {{- end}}
 }
 
@@ -684,14 +684,14 @@ type {{.Name}}FieldInline interface {
 	{{.MethodName}}F() {{.FieldName}}
 {{- end}}
 {{- range .Inlines}}
-	{{.FiledName}}Inline
+	{{.FieldName}}Inline
 {{- end}}
 }
 
 type {{.Name|firstToLower}}Field struct {
 	{{.FieldAlias}}BaseField[{{.TypePkg}}{{.Name}}]
 {{- range .Inlines}}
-	{{.FiledName}}Inline
+	{{.FieldName}}Inline
 {{- end}}
 }
 
@@ -810,7 +810,7 @@ func (b *StructFieldBuilder) buildStruct(t reflect.Type) (ft TypeInfo, ok bool) 
 	}
 
 	type Inline struct {
-		FiledName string
+		FieldName string
 		NewField  string
 	}
 
