@@ -1,8 +1,8 @@
 package elsetype
 
 type ThirdParty struct {
-	T  float64
-	Tm TimeType
+	Float64          float64
+	LikeInt_TimeType TimeType
 }
 
 type FullName string

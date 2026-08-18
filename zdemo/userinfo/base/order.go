@@ -3,8 +3,8 @@ package base
 import "github.com/xpwu/go-mongodb/zdemo/elsetype"
 
 type Order struct {
-	Time      uint64
-	Processor string
-	Age       elsetype.TimeType
-	Hour      elsetype.UTime
+	Uint64                    uint64
+	String                    string
+	LikeInt_elsetype_TimeType elsetype.TimeType
+	LikeUint_elsetype_UTime   elsetype.UTime
 }

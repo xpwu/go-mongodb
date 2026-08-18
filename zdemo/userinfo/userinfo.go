@@ -15,32 +15,47 @@ type GPSesA = GPSes
 
 type BSOND = bson.D
 
+type BSOND2 BSOND
+
 type Wx struct {
-	Age    *bson.Decimal128
-	Time   *int
-	Order  base.Order
-	Third  elsetype.ThirdParty
-	Addr   geo.SpherePoint
-	Player geo.FlatPoint
-	Name   elsetype.FullName
+	Decimal128                       *bson.Decimal128
+	IntPtr                           *int
+	Order                            base.Order
+	ThirdParty                       elsetype.ThirdParty
+	SpherePoint                      geo.SpherePoint
+	FlatPoint                        geo.FlatPoint
+	LikeStringName_elsetype_FullName elsetype.FullName
 }
+
+type WxAlias = Wx
+type WxDef Wx
+type WXDef2 WxAlias
+type AE = bson.E
+type DefAE AE
+type AliasDefAE = DefAE
 
 //go:generate go run github.com/xpwu/go-mongodb/cmd/gomongodbgen
 
 type UserInfo struct {
-	ID     string `bson:"_id"`
-	Login  int    `bson:"Login"`
-	Pass   []int
-	Wx     *Wx
-	Wx3    Wx
-	Ws     []Wx
-	Pass2  [][]int16
-	InWx   Wx `bson:"inWx,inline"`
-	Gps    GPS
-	Gpses  GPSes
-	GpsesA GPSesA
-	BsonD  bson.D
-	BSON_D BSOND
+	StringID     string `bson:"_id"`
+	IntLogin     int    `bson:"Login"`
+	IntArrayPass []int
+	WxPtr        *Wx
+	Wx           Wx
+	WsArray      []Wx
+	Int16Array2  [][]int16
+	//InWx                   Wx `bson:"inWx,inline"`
+	LikeFloat64_GPS        GPS
+	LikeFloat64Array_GPSes GPSes
+	AliasGPSes             GPSesA
+	BsonD                  bson.D
+	AliasDefAE             AliasDefAE
+	AalisBsonD             BSOND
+	AalisBsonDDef          BSOND2
+	AliasWx                WxAlias
+	LikeWx_WxDef           WxDef
+	InWxDef                WxDef `bson:",inline"`
+	DefAliasWx_WXDef2      WXDef2
 }
 
-//var filter2 = UserInfoDoc.AgeF().
+var filter2 = UserInfoDoc.AliasWxF().LikeStringName_elsetype_FullNameF().Eq("")
