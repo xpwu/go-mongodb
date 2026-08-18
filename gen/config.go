@@ -4,7 +4,10 @@ import (
 	"sort"
 )
 
-// MapEntry 自定义类型映射条目
+// MapEntry 自定义类型映射条目，都是全限定符
+//	"IntField"
+//	"fields.IntField"
+//	"github.com/foo/fields.IntField"
 type MapEntry struct {
 	Key       string
 	FieldType string

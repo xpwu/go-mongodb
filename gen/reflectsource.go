@@ -32,6 +32,10 @@ func (r *reflectTypeSource) Field(i int) FieldSource {
 	return &reflectFieldSource{f: r.t.Field(i)}
 }
 
+func (r *reflectTypeSource) Underlying() (TypeSource, bool) {
+	return nil, false
+}
+
 type reflectFieldSource struct {
 	f reflect.StructField
 }

@@ -3,6 +3,8 @@ package gen
 import (
 	"bytes"
 	"fmt"
+	"github.com/xpwu/go-mongodb/fields"
+	"github.com/xpwu/go-mongodb/geo"
 	"os"
 	"path"
 	"path/filepath"
@@ -40,16 +42,15 @@ type Generator struct {
 	outputDir  string
 	targetPkg  string
 	typeMap    map[string]TypeInfo
-	pendingSts []TypeSource // 待处理的嵌套 struct 队列
-	visited    map[string]bool
+	likeStruct map[string]TypeInfo
 }
 
 // NewGenerator 创建生成器
 func NewGenerator(config *Config) *Generator {
 	return &Generator{
-		config:  config,
-		typeMap: make(map[string]TypeInfo),
-		visited: make(map[string]bool),
+		config:     config,
+		typeMap:    make(map[string]TypeInfo),
+		likeStruct: make(map[string]TypeInfo),
 	}
 }
 
@@ -58,8 +59,6 @@ func NewGenerator(config *Config) *Generator {
 func (g *Generator) Generate(ts TypeSource) (subDir string) {
 	g.imports = newAllImports()
 	g.typeMap = make(map[string]TypeInfo)
-	g.pendingSts = nil
-	g.visited = make(map[string]bool)
 
 	// 初始化 targetPkg
 	if g.outputDir == "" {
@@ -80,9 +79,6 @@ func (g *Generator) Generate(ts TypeSource) (subDir string) {
 	// 先生成入口类型
 	ret := g.build(ts)
 
-	// 处理所有嵌套 struct
-	g.processPending()
-
 	if ret.Field.PkgPath() == g.targetPkg {
 		return ""
 	}
@@ -90,82 +86,110 @@ func (g *Generator) Generate(ts TypeSource) (subDir string) {
 	return strings.TrimPrefix(ret.Field.PkgPath(), g.targetPkg+"/")
 }
 
-// processPending 循环处理嵌套 struct 队列
-func (g *Generator) processPending() {
-	for len(g.pendingSts) > 0 {
-		// 取出队首
-		ts := g.pendingSts[0]
-		g.pendingSts = g.pendingSts[1:]
-
-		key := ts.PkgPath() + "." + ts.Name()
-		if g.visited[key] {
-			continue
-		}
-		g.visited[key] = true
-
-		// 防御性检查：只处理 struct 类型
-		if ts.Kind() != reflect.Struct {
-			continue
-		}
-
-		// 确保字段已加载（AST 版会懒加载，反射版空操作）
-		ts.EnsureFields()
-
-		// 生成该 struct 的代码
-		g.buildStruct(ts)
+func (g *Generator) cache(ts []TypeSource, info TypeInfo) {
+	for _, t := range ts {
+		key := t.PkgPath() + "." + t.Name()
+		info.T = t
+		g.typeMap[key] = info
 	}
 }
 
-// build 分发到具体的 build 方法
 func (g *Generator) build(ts TypeSource) TypeInfo {
-	key := ts.PkgPath() + "." + ts.Name()
-	if info, ok := g.typeMap[key]; ok {
+
+	// primitive 最优先
+	if info, ok := g.lookupPrimitive(ts); ok {
 		return info
 	}
 
-	if info, ok := g.lookupCustom(ts); ok {
-		g.typeMap[key] = info
+	underlays := make([]TypeSource, 1, 10)
+	underlays[0] = ts
+	aliasType := true
+	firstNotAliasIndex := 1
+
+	toLike := func(info TypeInfo) TypeInfo {
+		t := underlays[firstNotAliasIndex-1]
+		typeAlias := g.imports.add(t.PkgPath())
+		typeName := addDot(typeAlias) + t.Name()
+		info.T = t
+		oldFieldName := info.Field.Name()
+		info.Field.name = fmt.Sprintf("Like%s[%s]", oldFieldName, typeName)
+		info.NewField.name = fmt.Sprintf("NewLike%s[%s]", oldFieldName, typeName)
+		g.cache(underlays[0:firstNotAliasIndex], info)
 		return info
 	}
 
-	// ─── 处理别名 ───
-	if astTS, ok := ts.(*astTypeSource); ok && astTS.aliasedTo != nil {
-		// 递归 build 目标类型，但用原始名字缓存
-		targetInfo := g.build(astTS.aliasedTo)
-		info := TypeInfo{
-			T:         ts, // 保留原始类型
-			Field:     targetInfo.Field,
-			NewField:  targetInfo.NewField,
-			EqualAble: targetInfo.EqualAble,
+	// 查找 underlying 直到最后
+	for {
+		// 被内置类型或者同等类型找到，就只有返回这个类型，遵循用户设置优先原则
+
+		lastUnderlay := underlays[len(underlays)-1]
+
+		// type ts = B = C = ... = lastUnderlay
+		if info, ok := g.typeMap[lastUnderlay.PkgPath()+"."+lastUnderlay.Name()]; ok && aliasType {
+			g.cache(underlays, info)
+			info.T = lastUnderlay
+			return info
 		}
-		g.typeMap[key] = info
-		return info
+
+		if info, ok := g.lookupCustom(lastUnderlay); ok {
+			g.cache(underlays, info)
+			info.T = ts
+			return info
+		}
+
+		if info, ok := g.lookupBuiltinDirect(lastUnderlay); ok {
+			g.cache(underlays, info)
+			info.T = ts
+			return info
+		}
+
+		next, alias := lastUnderlay.Underlying()
+		if next == nil {
+			break
+		}
+		aliasType = aliasType && alias
+		if aliasType {
+			firstNotAliasIndex += 1
+		}
+		underlays = append(underlays, next)
 	}
 
-	if info, ok := g.lookupBuiltinDirect(ts); ok {
-		g.typeMap[key] = info
-		return info
+	lastUnderlay := underlays[len(underlays)-1]
+	key := lastUnderlay.PkgPath() + "." + lastUnderlay.Name()
+
+	if info, ok := g.likeStruct[key]; ok && !aliasType {
+		return toLike(info)
 	}
 
 	var info TypeInfo
 	var ok bool
 
-	switch ts.Kind() {
+	switch lastUnderlay.Kind() {
 	case reflect.Struct:
-		info, ok = g.buildStruct(ts)
+		info, ok = g.buildStruct(lastUnderlay)
+		if !ok {
+			break
+		}
+		g.likeStruct[key] = info
+		g.typeMap[key] = info
+		if len(underlays) == 1 {
+			return info
+		}
+		return toLike(info)
+
 	case reflect.Slice, reflect.Array:
-		info, ok = g.buildSlice(ts)
+		info, ok = g.buildSlice(lastUnderlay)
 	case reflect.Ptr:
-		info, ok = g.buildPtr(ts)
+		info, ok = g.buildPtr(lastUnderlay)
 	default:
-		info, ok = g.buildKind(ts)
+		info, ok = g.buildKind(lastUnderlay, underlays[firstNotAliasIndex-1])
 	}
 
 	if !ok {
 		panic(fmt.Errorf("not support type %s.%s (kind=%v)", ts.PkgPath(), ts.Name(), ts.Kind()))
 	}
 
-	g.typeMap[key] = info
+	g.cache(underlays[0:firstNotAliasIndex], info)
 	return info
 }
 
@@ -225,10 +249,8 @@ func (g *Generator) lookupCustom(ts TypeSource) (TypeInfo, bool) {
 	}, true
 }
 
-// ─── 内置类型硬编码 ─────────────────────────────────────────
-
-func (g *Generator) lookupBuiltinDirect(ts TypeSource) (TypeInfo, bool) {
-	fieldsPkg := "github.com/xpwu/go-mongodb/fields"
+func (g *Generator) lookupPrimitive(ts TypeSource) (TypeInfo, bool) {
+	fieldsPkg := x.TypeFor[fields.ObjectIDField]().PkgPath()
 
 	// 无包路径 = 内置类型
 	if ts.PkgPath() == "" {
@@ -251,8 +273,12 @@ func (g *Generator) lookupBuiltinDirect(ts TypeSource) (TypeInfo, bool) {
 		if info, ok := builtins[ts.Name()]; ok {
 			return info, true
 		}
-		return TypeInfo{}, false
 	}
+	return TypeInfo{}, false
+}
+
+func (g *Generator) lookupBuiltinDirect(ts TypeSource) (TypeInfo, bool) {
+	fieldsPkg := x.TypeFor[fields.ObjectIDField]().PkgPath()
 
 	// bson 包类型
 	bsonPkg := "go.mongodb.org/mongo-driver/v2/bson"
@@ -276,7 +302,7 @@ func (g *Generator) lookupBuiltinDirect(ts TypeSource) (TypeInfo, bool) {
 	}
 
 	// geo 包类型
-	geoPkg := "github.com/xpwu/go-mongodb/geo"
+	geoPkg := x.TypeFor[geo.FlatPoint]().PkgPath()
 	if ts.PkgPath() == geoPkg {
 		geoTypes := map[string]TypeInfo{
 			"SpherePoint": {T: ts, Field: typeRef{name: "SpherePointField", pkg: fieldsPkg}, NewField: typeRef{name: "NewSpherePointField", pkg: fieldsPkg}, EqualAble: true},
@@ -290,52 +316,29 @@ func (g *Generator) lookupBuiltinDirect(ts TypeSource) (TypeInfo, bool) {
 	return TypeInfo{}, false
 }
 
-// ─── buildKind ──────────────────────────────────────────────
+func (g *Generator) buildKind(ts, realTs TypeSource) (TypeInfo, bool) {
+	fieldsPkg := x.TypeFor[fields.StringField]().PkgPath()
 
-func (g *Generator) buildKind(ts TypeSource) (TypeInfo, bool) {
-	fieldsPkg := "github.com/xpwu/go-mongodb/fields"
-
-	typeAlias := ""
-	if ts.PkgPath() != "" {
-		typeAlias = g.imports.add(ts.PkgPath())
-	}
-	typeName := addDot(typeAlias) + ts.Name()
+	typeAlias := g.imports.add(realTs.PkgPath())
+	typeName := addDot(typeAlias) + realTs.Name()
 
 	switch ts.Kind() {
 	case reflect.Bool:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("ComparableField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewComparableField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
-	case reflect.Int:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("IntegerField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewIntegerField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
-	case reflect.Int8:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("IntegerField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewIntegerField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
-	case reflect.Int16:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("IntegerField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewIntegerField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
-	case reflect.Int32:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("IntegerField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewIntegerField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
-	case reflect.Int64:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("IntegerField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewIntegerField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
-	case reflect.Uint:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("UnIntegerField[%s, int]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewUnIntegerField[%s, int]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
-	case reflect.Uint8:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("UnIntegerField[%s, int8]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewUnIntegerField[%s, int8]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
-	case reflect.Uint16:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("UnIntegerField[%s, int16]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewUnIntegerField[%s, int16]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
-	case reflect.Uint32:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("UnIntegerField[%s, int32]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewUnIntegerField[%s, int32]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
-	case reflect.Uint64:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("UnIntegerField[%s, int64]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewUnIntegerField[%s, int64]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
-	case reflect.Float32:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("ComputableField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewComputableField[%s]", typeName), pkg: fieldsPkg}, EqualAble: false}, true
-	case reflect.Float64:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("ComputableField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewComputableField[%s]", typeName), pkg: fieldsPkg}, EqualAble: false}, true
+		return TypeInfo{T: realTs, Field: typeRef{name: fmt.Sprintf("ComparableField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewComparableField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return TypeInfo{T: realTs, Field: typeRef{name: fmt.Sprintf("IntegerField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewIntegerField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return TypeInfo{T: realTs, Field: typeRef{name: fmt.Sprintf("UnIntegerField[%s, int]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewUnIntegerField[%s, int]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+	case reflect.Float32, reflect.Float64:
+		return TypeInfo{T: realTs, Field: typeRef{name: fmt.Sprintf("ComputableField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewComputableField[%s]", typeName), pkg: fieldsPkg}, EqualAble: false}, true
 	case reflect.String:
-		return TypeInfo{T: ts, Field: typeRef{name: fmt.Sprintf("LikeStringField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewLikeStringField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
+		return TypeInfo{T: realTs, Field: typeRef{name: fmt.Sprintf("LikeStringField[%s]", typeName), pkg: fieldsPkg}, NewField: typeRef{name: fmt.Sprintf("NewLikeStringField[%s]", typeName), pkg: fieldsPkg}, EqualAble: true}, true
 	case reflect.Interface:
 		// any / interface{} → 使用 BaseStructField
 		// 防御性说明：interface 类型无法在编译期确定具体类型，
 		// 因此只能生成最通用的 BaseStructField，不支持 EqualAble 比较操作。
 		return TypeInfo{
-			T:         ts,
+			T:         realTs,
 			Field:     typeRef{name: fmt.Sprintf("BaseStructField[%s]", typeName), pkg: fieldsPkg},
 			NewField:  typeRef{name: fmt.Sprintf("NewBaseStructField[%s]", typeName), pkg: fieldsPkg},
 			EqualAble: false,
@@ -344,8 +347,6 @@ func (g *Generator) buildKind(ts TypeSource) (TypeInfo, bool) {
 		return TypeInfo{}, false
 	}
 }
-
-// ─── buildSlice ─────────────────────────────────────────────
 
 func (g *Generator) buildSlice(ts TypeSource) (TypeInfo, bool) {
 	// 计算维度，同时找到最内层元素类型
@@ -436,8 +437,6 @@ func (g *Generator) buildSlice(ts TypeSource) (TypeInfo, bool) {
 	}, true
 }
 
-// ─── buildStruct ────────────────────────────────────────────
-
 func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 	// 确保字段已加载（AST 版关键！）
 	ts.EnsureFields()
@@ -448,6 +447,9 @@ func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 	}
 
 	oldImports := g.imports
+	defer func() {
+		g.imports = oldImports
+	}()
 	g.imports = newAllImports()
 	thisImports := g.imports
 
@@ -463,6 +465,16 @@ func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 		thisPkg = path.Join(g.targetPkg, subDir)
 		thisDir = path.Join(g.outputDir, subDir)
 	}
+
+	// 防止循环嵌套，提前设值拦截
+	tempInfo := TypeInfo{
+		T:         ts,
+		Field:     typeRef{name: thisName + "Field", pkg: thisPkg},
+		NewField:  typeRef{name: "New" + thisName + "Field", pkg: thisPkg},
+		EqualAble: false, // 循环引为，默认为 false，也没法求出确定的 EqualAble 值
+	}
+	g.typeMap[key] = tempInfo
+	g.likeStruct[key] = tempInfo
 
 	thisImports.exclude(thisPkg)
 	thisImports.alias.get(thisPkg)
@@ -517,14 +529,12 @@ func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 		subFt := g.build(fs.Type())
 		equalAble = equalAble && subFt.EqualAble
 
-		// 关键：如果子类型是 struct，加入待处理队列
-		g.maybeEnqueue(fs.Type())
-
 		subFName := addDot(thisImports.add(subFt.Field.PkgPath())) + subFt.Field.Name()
 		subNewF := addDot(thisImports.add(subFt.NewField.PkgPath())) + subFt.NewField.Name()
 
 		if tag.Inline && fs.Type().Kind() == reflect.Struct {
-			s.Inlines = append(s.Inlines, templateInline{subFName, subNewF})
+			inlineF := extractBetweenFlexible(subFName, "Like", "[")
+			s.Inlines = append(s.Inlines, templateInline{inlineF, "NewLike" + inlineF})
 		} else {
 			fd.FieldName = subFName
 			fd.NewField = indentLines(subNewF, 2)
@@ -550,8 +560,6 @@ func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 		panic(err)
 	}
 
-	g.imports = oldImports
-
 	info := TypeInfo{
 		T:         ts,
 		Field:     typeRef{name: thisName + "Field", pkg: thisPkg},
@@ -559,68 +567,9 @@ func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 		EqualAble: equalAble,
 	}
 	g.typeMap[key] = info
+	g.likeStruct[key] = info
 	return info, true
 }
-
-// maybeEnqueue 如果类型是 struct（或解引用后是 struct），加入待处理队列
-func (g *Generator) maybeEnqueue(ts TypeSource) {
-	if ts == nil {
-		return
-	}
-
-	// 解引用 Ptr
-	actual := ts
-	if ts.Kind() == reflect.Ptr {
-		actual = ts.Elem()
-	}
-	if actual == nil {
-		return
-	}
-
-	// 解引用 Slice/Array（只解一层用于判断）
-	elem := actual
-	if actual.Kind() == reflect.Slice || actual.Kind() == reflect.Array {
-		elem = actual.Elem()
-	}
-	if elem == nil {
-		return
-	}
-
-	// 只处理 struct 类型
-	if elem.Kind() != reflect.Struct {
-		return
-	}
-
-	// 跳过内置包（fields 自身、bson、geo 等已在 lookupBuiltinDirect 中处理）
-	if elem.PkgPath() == "" {
-		return
-	}
-	skipPrefixes := []string{
-		"github.com/xpwu/go-mongodb/fields",
-		"github.com/xpwu/go-mongodb/filter",
-		"github.com/xpwu/go-mongodb/updater",
-		"github.com/xpwu/go-mongodb/field",
-		"go.mongodb.org/mongo-driver/v2/bson",
-		"github.com/xpwu/go-mongodb/geo",
-	}
-	for _, p := range skipPrefixes {
-		if strings.HasPrefix(elem.PkgPath(), p) {
-			return
-		}
-	}
-
-	key := elem.PkgPath() + "." + elem.Name()
-	if g.visited[key] {
-		return
-	}
-
-	// 确保该类型可以加载（AST 版需要）
-	elem.EnsureFields()
-
-	g.pendingSts = append(g.pendingSts, elem)
-}
-
-// ─── 工具函数 ───────────────────────────────────────────────
 
 func indentLines(s string, indents int) string {
 	lines := strings.Split(s, "\n")
@@ -628,4 +577,25 @@ func indentLines(s string, indents int) string {
 		lines[i] = strings.Repeat("\t", indents) + lines[i]
 	}
 	return strings.Join(lines, "\n")
+}
+
+// extractBetweenFlexible 返回 s 中 start 之后、end 之前的子串。
+// 如果 start 不存在，则从字符串开头开始；
+// 如果 end 不存在，则提取到字符串末尾。
+func extractBetweenFlexible(s, start, end string) string {
+	// 确定起始位置
+	startIdx := strings.Index(s, start)
+	if startIdx == -1 {
+		startIdx = 0 // start 不存在，从头开始
+	} else {
+		startIdx += len(start) // 移动到 start 之后
+	}
+
+	// 从 startIdx 开始查找 end
+	endIdx := strings.Index(s[startIdx:], end)
+	if endIdx == -1 {
+		// end 不存在，截取到末尾
+		return s[startIdx:]
+	}
+	return s[startIdx : startIdx+endIdx]
 }

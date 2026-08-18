@@ -19,61 +19,62 @@ import (
 {{- end}}
 )
 
-type {{.Name}}Field interface {
+type Like{{.Name}}Field[T any] interface {
 	{{.MongoAlias}}Field
 {{- if .EqualAble}}
-	{{.FilterAlias}}ComparableFilter[{{.TypePkg}}{{.Name}}]
+	{{.FilterAlias}}ComparableFilter[T]
 {{- else}}
-	{{.FilterAlias}}BaseFilter[{{.TypePkg}}{{.Name}}]
+	{{.FilterAlias}}BaseFilter[T]
 {{- end}}
-	{{.UpdaterAlias}}BaseUpdater[{{.TypePkg}}{{.Name}}]
+	{{.UpdaterAlias}}BaseUpdater[T]
+
+	Like{{.Name}}FieldSubFields
+}
+
+type {{.Name}}Field = Like{{.Name}}Field[{{.TypePkg}}{{.Name}}]
+
+type Like{{.Name}}FieldSubFields interface {
 {{- range .Fields}}
 	{{.MethodName}}F() {{.FieldName}}
 {{- end}}
 {{- range .Inlines}}
-	{{.FiledName}}Inline
+	Like{{.FieldName}}SubFields
 {{- end}}
 }
 
-type {{.Name}}FieldInline interface {
-{{- range .Fields}}
-	{{.MethodName}}F() {{.FieldName}}
-{{- end}}
+type like{{.Name}}Field[T any] struct {
+	{{.FieldAlias}}BaseField[T]
 {{- range .Inlines}}
-	{{.FiledName}}Inline
+	Like{{.FieldName}}SubFields
 {{- end}}
 }
 
-type {{.Name|firstToLower}}Field struct {
-	{{.FieldAlias}}BaseField[{{.TypePkg}}{{.Name}}]
+func NewLike{{.Name}}Field[T any](name string) Like{{.Name}}Field[T] {
+	return &like{{.Name}}Field[T]{
+		*{{.FieldAlias}}NewBaseField[T](name),
 {{- range .Inlines}}
-	{{.FiledName}}Inline
+		{{.NewField}}SubFields(name),
 {{- end}}
+	}
 }
 
 var {{.Name}}Doc = New{{.Name}}Field("")
+var New{{.Name}}Field = NewLike{{.Name}}Field[{{.TypePkg}}{{.Name}}]
 
-func New{{.Name}}Field(name string) {{.Name}}Field {
-	return &{{.Name|firstToLower}}Field{
-		*{{.FieldAlias}}NewBaseField[{{.TypePkg}}{{.Name}}](name),
+func NewLike{{.Name}}FieldSubFields(name string) Like{{.Name}}FieldSubFields {
+	return &like{{.Name}}Field[any]{
+		*{{.FieldAlias}}NewBaseField[any](name),
 {{- range .Inlines}}
-		{{.NewField}}Inline(name),
+		{{.NewField}}SubFields(name),
 {{- end}}
 	}
 }
 
-func New{{.Name}}FieldInline(name string) {{.Name}}FieldInline {
-	return &{{.Name|firstToLower}}Field{
-		*{{.FieldAlias}}NewBaseField[{{.TypePkg}}{{.Name}}](name),
-{{- range .Inlines}}
-		{{.NewField}}Inline(name),
-{{- end}}
-	}
-}
+var New{{.Name}}FieldSubFields = NewLike{{.Name}}FieldSubFields
 
 {{- range .Fields}}
 
-func (s *{{$.Name|firstToLower}}Field) {{.MethodName}}F() {{.FieldName}} {
+func (s *like{{$.Name}}Field[T]) {{.MethodName}}F() {{.FieldName}} {
 	return {{.NewField}}({{$.FieldAlias}}SubField(s.FullName(), "{{.TagName}}"))
 }
 {{- end}}
@@ -104,7 +105,7 @@ type templateField struct {
 
 // templateInline 内嵌字段的模板数据
 type templateInline struct {
-	FiledName string
+	FieldName string
 	NewField  string
 }
 
