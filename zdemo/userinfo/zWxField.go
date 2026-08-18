@@ -13,71 +13,71 @@ import (
   elsetype_eLWi9M5n "github.com/xpwu/go-mongodb/zdemo/userinfo/elsetype_eLWi9M5n"
 )
 
-type WxField interface {
+type LikeWxField[T any] interface {
 	field.Field
-	filter.BaseFilter[Wx]
-	updater.BaseUpdater[Wx]
-	AgeF() fields.Decimal128Field
-	TimeF() fields.IntField
-	OrderF() base.OrderField
-	ThirdF() elsetype_eLWi9M5n.ThirdPartyField
-	AddrF() fields.SpherePointField
-	PlayerF() fields.FlatPointField
-	NameF() fields.LikeStringField[elsetype.FullName]
+	filter.BaseFilter[T]
+	updater.BaseUpdater[T]
+
+	LikeWxFieldSubFields
 }
 
-type WxFieldInline interface {
-	AgeF() fields.Decimal128Field
-	TimeF() fields.IntField
+type WxField = LikeWxField[Wx]
+
+type LikeWxFieldSubFields interface {
+	Decimal128F() fields.Decimal128Field
+	IntPtrF() fields.IntField
 	OrderF() base.OrderField
-	ThirdF() elsetype_eLWi9M5n.ThirdPartyField
-	AddrF() fields.SpherePointField
-	PlayerF() fields.FlatPointField
-	NameF() fields.LikeStringField[elsetype.FullName]
+	ThirdPartyF() elsetype_eLWi9M5n.ThirdPartyField
+	SpherePointF() fields.SpherePointField
+	FlatPointF() fields.FlatPointField
+	LikeStringName_elsetype_FullNameF() fields.LikeStringField[elsetype.FullName]
 }
 
-type wxField struct {
-	fields.BaseField[Wx]
+type likeWxField[T any] struct {
+	fields.BaseField[T]
+}
+
+func NewLikeWxField[T any](name string) LikeWxField[T] {
+	return &likeWxField[T]{
+		*fields.NewBaseField[T](name),
+	}
 }
 
 var WxDoc = NewWxField("")
+var NewWxField = NewLikeWxField[Wx]
 
-func NewWxField(name string) WxField {
-	return &wxField{
-		*fields.NewBaseField[Wx](name),
+func NewLikeWxFieldSubFields(name string) LikeWxFieldSubFields {
+	return &likeWxField[any]{
+		*fields.NewBaseField[any](name),
 	}
 }
 
-func NewWxFieldInline(name string) WxFieldInline {
-	return &wxField{
-		*fields.NewBaseField[Wx](name),
-	}
+var NewWxFieldSubFields = NewLikeWxFieldSubFields
+
+func (s *likeWxField[T]) Decimal128F() fields.Decimal128Field {
+	return fields.NewDecimal128Field(fields.SubField(s.FullName(), "decimal128"))
 }
 
-func (s *wxField) AgeF() fields.Decimal128Field {
-	return fields.NewDecimal128Field(fields.SubField(s.FullName(), "age"))
+func (s *likeWxField[T]) IntPtrF() fields.IntField {
+	return fields.NewIntField(fields.SubField(s.FullName(), "intptr"))
 }
 
-func (s *wxField) TimeF() fields.IntField {
-	return fields.NewIntField(fields.SubField(s.FullName(), "time"))
-}
-
-func (s *wxField) OrderF() base.OrderField {
+func (s *likeWxField[T]) OrderF() base.OrderField {
 	return base.NewOrderField(fields.SubField(s.FullName(), "order"))
 }
 
-func (s *wxField) ThirdF() elsetype_eLWi9M5n.ThirdPartyField {
-	return elsetype_eLWi9M5n.NewThirdPartyField(fields.SubField(s.FullName(), "third"))
+func (s *likeWxField[T]) ThirdPartyF() elsetype_eLWi9M5n.ThirdPartyField {
+	return elsetype_eLWi9M5n.NewThirdPartyField(fields.SubField(s.FullName(), "thirdparty"))
 }
 
-func (s *wxField) AddrF() fields.SpherePointField {
-	return fields.NewSpherePointField(fields.SubField(s.FullName(), "addr"))
+func (s *likeWxField[T]) SpherePointF() fields.SpherePointField {
+	return fields.NewSpherePointField(fields.SubField(s.FullName(), "spherepoint"))
 }
 
-func (s *wxField) PlayerF() fields.FlatPointField {
-	return fields.NewFlatPointField(fields.SubField(s.FullName(), "player"))
+func (s *likeWxField[T]) FlatPointF() fields.FlatPointField {
+	return fields.NewFlatPointField(fields.SubField(s.FullName(), "flatpoint"))
 }
 
-func (s *wxField) NameF() fields.LikeStringField[elsetype.FullName] {
-	return fields.NewLikeStringField[elsetype.FullName](fields.SubField(s.FullName(), "name"))
+func (s *likeWxField[T]) LikeStringName_elsetype_FullNameF() fields.LikeStringField[elsetype.FullName] {
+	return fields.NewLikeStringField[elsetype.FullName](fields.SubField(s.FullName(), "likestringname_elsetype_fullname"))
 }

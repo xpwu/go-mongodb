@@ -11,41 +11,46 @@ import (
   elsetype "github.com/xpwu/go-mongodb/zdemo/elsetype"
 )
 
-type ThirdPartyField interface {
+type LikeThirdPartyField[T any] interface {
 	field.Field
-	filter.BaseFilter[elsetype.ThirdParty]
-	updater.BaseUpdater[elsetype.ThirdParty]
-	TF() fields.Float64Field
-	TmF() fields.IntegerField[elsetype.TimeType]
+	filter.BaseFilter[T]
+	updater.BaseUpdater[T]
+
+	LikeThirdPartyFieldSubFields
 }
 
-type ThirdPartyFieldInline interface {
-	TF() fields.Float64Field
-	TmF() fields.IntegerField[elsetype.TimeType]
+type ThirdPartyField = LikeThirdPartyField[elsetype.ThirdParty]
+
+type LikeThirdPartyFieldSubFields interface {
+	Float64F() fields.Float64Field
+	LikeInt_TimeTypeF() fields.IntegerField[elsetype.TimeType]
 }
 
-type thirdPartyField struct {
-	fields.BaseField[elsetype.ThirdParty]
+type likeThirdPartyField[T any] struct {
+	fields.BaseField[T]
+}
+
+func NewLikeThirdPartyField[T any](name string) LikeThirdPartyField[T] {
+	return &likeThirdPartyField[T]{
+		*fields.NewBaseField[T](name),
+	}
 }
 
 var ThirdPartyDoc = NewThirdPartyField("")
+var NewThirdPartyField = NewLikeThirdPartyField[elsetype.ThirdParty]
 
-func NewThirdPartyField(name string) ThirdPartyField {
-	return &thirdPartyField{
-		*fields.NewBaseField[elsetype.ThirdParty](name),
+func NewLikeThirdPartyFieldSubFields(name string) LikeThirdPartyFieldSubFields {
+	return &likeThirdPartyField[any]{
+		*fields.NewBaseField[any](name),
 	}
 }
 
-func NewThirdPartyFieldInline(name string) ThirdPartyFieldInline {
-	return &thirdPartyField{
-		*fields.NewBaseField[elsetype.ThirdParty](name),
-	}
+var NewThirdPartyFieldSubFields = NewLikeThirdPartyFieldSubFields
+
+func (s *likeThirdPartyField[T]) Float64F() fields.Float64Field {
+	return fields.NewFloat64Field(fields.SubField(s.FullName(), "float64"))
 }
 
-func (s *thirdPartyField) TF() fields.Float64Field {
-	return fields.NewFloat64Field(fields.SubField(s.FullName(), "t"))
-}
-
-func (s *thirdPartyField) TmF() fields.IntegerField[elsetype.TimeType] {
-	return fields.NewIntegerField[elsetype.TimeType](fields.SubField(s.FullName(), "tm"))
+func (s *likeThirdPartyField[T]) LikeInt_TimeTypeF() fields.IntegerField[elsetype.TimeType] {
+	return fields.NewIntegerField[elsetype.TimeType](fields.SubField(s.FullName(), "likeint_timetype"))
 }

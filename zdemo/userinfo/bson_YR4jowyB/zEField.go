@@ -11,41 +11,46 @@ import (
   bson "go.mongodb.org/mongo-driver/v2/bson"
 )
 
-type EField interface {
+type LikeEField[T any] interface {
 	field.Field
-	filter.BaseFilter[bson.E]
-	updater.BaseUpdater[bson.E]
+	filter.BaseFilter[T]
+	updater.BaseUpdater[T]
+
+	LikeEFieldSubFields
+}
+
+type EField = LikeEField[bson.E]
+
+type LikeEFieldSubFields interface {
 	KeyF() fields.StringField
 	ValueF() fields.BaseStructField[any]
 }
 
-type EFieldInline interface {
-	KeyF() fields.StringField
-	ValueF() fields.BaseStructField[any]
+type likeEField[T any] struct {
+	fields.BaseField[T]
 }
 
-type eField struct {
-	fields.BaseField[bson.E]
+func NewLikeEField[T any](name string) LikeEField[T] {
+	return &likeEField[T]{
+		*fields.NewBaseField[T](name),
+	}
 }
 
 var EDoc = NewEField("")
+var NewEField = NewLikeEField[bson.E]
 
-func NewEField(name string) EField {
-	return &eField{
-		*fields.NewBaseField[bson.E](name),
+func NewLikeEFieldSubFields(name string) LikeEFieldSubFields {
+	return &likeEField[any]{
+		*fields.NewBaseField[any](name),
 	}
 }
 
-func NewEFieldInline(name string) EFieldInline {
-	return &eField{
-		*fields.NewBaseField[bson.E](name),
-	}
-}
+var NewEFieldSubFields = NewLikeEFieldSubFields
 
-func (s *eField) KeyF() fields.StringField {
+func (s *likeEField[T]) KeyF() fields.StringField {
 	return fields.NewStringField(fields.SubField(s.FullName(), "key"))
 }
 
-func (s *eField) ValueF() fields.BaseStructField[any] {
+func (s *likeEField[T]) ValueF() fields.BaseStructField[any] {
 	return fields.NewBaseStructField[any](fields.SubField(s.FullName(), "value"))
 }

@@ -12,130 +12,152 @@ import (
   bson "go.mongodb.org/mongo-driver/v2/bson"
 )
 
-type UserInfoField interface {
+type LikeUserInfoField[T any] interface {
 	field.Field
-	filter.BaseFilter[UserInfo]
-	updater.BaseUpdater[UserInfo]
-	IDF() fields.StringField
-	LoginF() fields.IntField
-	PassF() fields.ArrayComparableField[int, fields.IntField]
-	WxF() WxField
-	Wx3F() WxField
-	WsF() fields.ArrayField[Wx, WxField]
-	Pass2F() fields.ArrayComparableField[[]int16, fields.ArrayComparableField[int16, fields.Int16Field]]
-	GpsF() fields.ComputableField[GPS]
-	GpsesF() fields.ArrayField[GPS, fields.ComputableField[GPS]]
-	GpsesAF() fields.ArrayField[GPS, fields.ComputableField[GPS]]
-	BsonDF() fields.ArrayField[bson.E, bson_YR4jowyB.EField]
-	BSON_DF() fields.ArrayField[bson.E, bson_YR4jowyB.EField]
-	WxFieldInline
+	filter.BaseFilter[T]
+	updater.BaseUpdater[T]
+
+	LikeUserInfoFieldSubFields
 }
 
-type UserInfoFieldInline interface {
-	IDF() fields.StringField
-	LoginF() fields.IntField
-	PassF() fields.ArrayComparableField[int, fields.IntField]
+type UserInfoField = LikeUserInfoField[UserInfo]
+
+type LikeUserInfoFieldSubFields interface {
+	StringIDF() fields.StringField
+	IntLoginF() fields.IntField
+	IntArrayPassF() fields.ArrayComparableField[int, fields.IntField]
+	WxPtrF() WxField
 	WxF() WxField
-	Wx3F() WxField
-	WsF() fields.ArrayField[Wx, WxField]
-	Pass2F() fields.ArrayComparableField[[]int16, fields.ArrayComparableField[int16, fields.Int16Field]]
-	GpsF() fields.ComputableField[GPS]
-	GpsesF() fields.ArrayField[GPS, fields.ComputableField[GPS]]
-	GpsesAF() fields.ArrayField[GPS, fields.ComputableField[GPS]]
+	WsArrayF() fields.ArrayField[Wx, WxField]
+	Int16Array2F() fields.ArrayComparableField[[]int16, fields.ArrayComparableField[int16, fields.Int16Field]]
+	LikeFloat64_GPSF() fields.ComputableField[GPS]
+	LikeFloat64Array_GPSesF() fields.ArrayField[GPS, fields.ComputableField[GPS]]
+	AliasGPSesF() fields.ArrayField[GPS, fields.ComputableField[GPS]]
 	BsonDF() fields.ArrayField[bson.E, bson_YR4jowyB.EField]
-	BSON_DF() fields.ArrayField[bson.E, bson_YR4jowyB.EField]
-	WxFieldInline
+	AliasDefAEF() bson_YR4jowyB.LikeEField[DefAE]
+	AalisBsonDF() fields.ArrayField[bson.E, bson_YR4jowyB.EField]
+	AalisBsonDDefF() fields.ArrayField[bson.E, bson_YR4jowyB.EField]
+	AliasWxF() WxField
+	LikeWx_WxDefF() LikeWxField[WxDef]
+	DefAliasWx_WXDef2F() LikeWxField[WXDef2]
+	LikeWxFieldSubFields
 }
 
-type userInfoField struct {
-	fields.BaseField[UserInfo]
-	WxFieldInline
+type likeUserInfoField[T any] struct {
+	fields.BaseField[T]
+	LikeWxFieldSubFields
+}
+
+func NewLikeUserInfoField[T any](name string) LikeUserInfoField[T] {
+	return &likeUserInfoField[T]{
+		*fields.NewBaseField[T](name),
+		NewLikeWxFieldSubFields(name),
+	}
 }
 
 var UserInfoDoc = NewUserInfoField("")
+var NewUserInfoField = NewLikeUserInfoField[UserInfo]
 
-func NewUserInfoField(name string) UserInfoField {
-	return &userInfoField{
-		*fields.NewBaseField[UserInfo](name),
-		NewWxFieldInline(name),
+func NewLikeUserInfoFieldSubFields(name string) LikeUserInfoFieldSubFields {
+	return &likeUserInfoField[any]{
+		*fields.NewBaseField[any](name),
+		NewLikeWxFieldSubFields(name),
 	}
 }
 
-func NewUserInfoFieldInline(name string) UserInfoFieldInline {
-	return &userInfoField{
-		*fields.NewBaseField[UserInfo](name),
-		NewWxFieldInline(name),
-	}
-}
+var NewUserInfoFieldSubFields = NewLikeUserInfoFieldSubFields
 
-func (s *userInfoField) IDF() fields.StringField {
+func (s *likeUserInfoField[T]) StringIDF() fields.StringField {
 	return fields.NewStringField(fields.SubField(s.FullName(), "_id"))
 }
 
-func (s *userInfoField) LoginF() fields.IntField {
+func (s *likeUserInfoField[T]) IntLoginF() fields.IntField {
 	return fields.NewIntField(fields.SubField(s.FullName(), "Login"))
 }
 
-func (s *userInfoField) PassF() fields.ArrayComparableField[int, fields.IntField] {
+func (s *likeUserInfoField[T]) IntArrayPassF() fields.ArrayComparableField[int, fields.IntField] {
 	return func(name string) fields.ArrayComparableField[int, fields.IntField] {
 			newElem := fields.NewIntField
 			return fields.NewArrayAnyComparableField[int, fields.IntField](name, newElem)
-		}(fields.SubField(s.FullName(), "pass"))
+		}(fields.SubField(s.FullName(), "intarraypass"))
 }
 
-func (s *userInfoField) WxF() WxField {
+func (s *likeUserInfoField[T]) WxPtrF() WxField {
+	return NewWxField(fields.SubField(s.FullName(), "wxptr"))
+}
+
+func (s *likeUserInfoField[T]) WxF() WxField {
 	return NewWxField(fields.SubField(s.FullName(), "wx"))
 }
 
-func (s *userInfoField) Wx3F() WxField {
-	return NewWxField(fields.SubField(s.FullName(), "wx3"))
-}
-
-func (s *userInfoField) WsF() fields.ArrayField[Wx, WxField] {
+func (s *likeUserInfoField[T]) WsArrayF() fields.ArrayField[Wx, WxField] {
 	return func(name string) fields.ArrayField[Wx, WxField] {
 			newElem := NewWxField
 			return fields.NewArrayField[Wx, WxField](name, newElem)
-		}(fields.SubField(s.FullName(), "ws"))
+		}(fields.SubField(s.FullName(), "wsarray"))
 }
 
-func (s *userInfoField) Pass2F() fields.ArrayComparableField[[]int16, fields.ArrayComparableField[int16, fields.Int16Field]] {
+func (s *likeUserInfoField[T]) Int16Array2F() fields.ArrayComparableField[[]int16, fields.ArrayComparableField[int16, fields.Int16Field]] {
 	return func(name string) fields.ArrayComparableField[[]int16, fields.ArrayComparableField[int16, fields.Int16Field]] {
 			newElem := func(name string) fields.ArrayComparableField[int16, fields.Int16Field] {
 				newElem := fields.NewInt16Field
 				return fields.NewArrayAnyComparableField[int16, fields.Int16Field](name, newElem)
 			}
 			return fields.NewArrayAnyComparableField[[]int16, fields.ArrayComparableField[int16, fields.Int16Field]](name, newElem)
-		}(fields.SubField(s.FullName(), "pass2"))
+		}(fields.SubField(s.FullName(), "int16array2"))
 }
 
-func (s *userInfoField) GpsF() fields.ComputableField[GPS] {
-	return fields.NewComputableField[GPS](fields.SubField(s.FullName(), "gps"))
+func (s *likeUserInfoField[T]) LikeFloat64_GPSF() fields.ComputableField[GPS] {
+	return fields.NewComputableField[GPS](fields.SubField(s.FullName(), "likefloat64_gps"))
 }
 
-func (s *userInfoField) GpsesF() fields.ArrayField[GPS, fields.ComputableField[GPS]] {
+func (s *likeUserInfoField[T]) LikeFloat64Array_GPSesF() fields.ArrayField[GPS, fields.ComputableField[GPS]] {
 	return func(name string) fields.ArrayField[GPS, fields.ComputableField[GPS]] {
 			newElem := fields.NewComputableField[GPS]
 			return fields.NewArrayField[GPS, fields.ComputableField[GPS]](name, newElem)
-		}(fields.SubField(s.FullName(), "gpses"))
+		}(fields.SubField(s.FullName(), "likefloat64array_gpses"))
 }
 
-func (s *userInfoField) GpsesAF() fields.ArrayField[GPS, fields.ComputableField[GPS]] {
+func (s *likeUserInfoField[T]) AliasGPSesF() fields.ArrayField[GPS, fields.ComputableField[GPS]] {
 	return func(name string) fields.ArrayField[GPS, fields.ComputableField[GPS]] {
 			newElem := fields.NewComputableField[GPS]
 			return fields.NewArrayField[GPS, fields.ComputableField[GPS]](name, newElem)
-		}(fields.SubField(s.FullName(), "gpsesa"))
+		}(fields.SubField(s.FullName(), "aliasgpses"))
 }
 
-func (s *userInfoField) BsonDF() fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
+func (s *likeUserInfoField[T]) BsonDF() fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
 	return func(name string) fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
 			newElem := bson_YR4jowyB.NewEField
 			return fields.NewArrayField[bson.E, bson_YR4jowyB.EField](name, newElem)
 		}(fields.SubField(s.FullName(), "bsond"))
 }
 
-func (s *userInfoField) BSON_DF() fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
+func (s *likeUserInfoField[T]) AliasDefAEF() bson_YR4jowyB.LikeEField[DefAE] {
+	return bson_YR4jowyB.NewLikeEField[DefAE](fields.SubField(s.FullName(), "aliasdefae"))
+}
+
+func (s *likeUserInfoField[T]) AalisBsonDF() fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
 	return func(name string) fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
 			newElem := bson_YR4jowyB.NewEField
 			return fields.NewArrayField[bson.E, bson_YR4jowyB.EField](name, newElem)
-		}(fields.SubField(s.FullName(), "bson_d"))
+		}(fields.SubField(s.FullName(), "aalisbsond"))
+}
+
+func (s *likeUserInfoField[T]) AalisBsonDDefF() fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
+	return func(name string) fields.ArrayField[bson.E, bson_YR4jowyB.EField] {
+			newElem := bson_YR4jowyB.NewEField
+			return fields.NewArrayField[bson.E, bson_YR4jowyB.EField](name, newElem)
+		}(fields.SubField(s.FullName(), "aalisbsonddef"))
+}
+
+func (s *likeUserInfoField[T]) AliasWxF() WxField {
+	return NewWxField(fields.SubField(s.FullName(), "aliaswx"))
+}
+
+func (s *likeUserInfoField[T]) LikeWx_WxDefF() LikeWxField[WxDef] {
+	return NewLikeWxField[WxDef](fields.SubField(s.FullName(), "likewx_wxdef"))
+}
+
+func (s *likeUserInfoField[T]) DefAliasWx_WXDef2F() LikeWxField[WXDef2] {
+	return NewLikeWxField[WXDef2](fields.SubField(s.FullName(), "defaliaswx_wxdef2"))
 }

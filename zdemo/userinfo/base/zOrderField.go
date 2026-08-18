@@ -11,53 +11,56 @@ import (
   elsetype "github.com/xpwu/go-mongodb/zdemo/elsetype"
 )
 
-type OrderField interface {
+type LikeOrderField[T any] interface {
 	field.Field
-	filter.ComparableFilter[Order]
-	updater.BaseUpdater[Order]
-	TimeF() fields.Uint64Field
-	ProcessorF() fields.StringField
-	AgeF() fields.IntegerField[elsetype.TimeType]
-	HourF() fields.UnIntegerField[elsetype.UTime, int]
+	filter.ComparableFilter[T]
+	updater.BaseUpdater[T]
+
+	LikeOrderFieldSubFields
 }
 
-type OrderFieldInline interface {
-	TimeF() fields.Uint64Field
-	ProcessorF() fields.StringField
-	AgeF() fields.IntegerField[elsetype.TimeType]
-	HourF() fields.UnIntegerField[elsetype.UTime, int]
+type OrderField = LikeOrderField[Order]
+
+type LikeOrderFieldSubFields interface {
+	Uint64F() fields.Uint64Field
+	StringF() fields.StringField
+	LikeInt_elsetype_TimeTypeF() fields.IntegerField[elsetype.TimeType]
+	LikeUint_elsetype_UTimeF() fields.UnIntegerField[elsetype.UTime, int]
 }
 
-type orderField struct {
-	fields.BaseField[Order]
+type likeOrderField[T any] struct {
+	fields.BaseField[T]
+}
+
+func NewLikeOrderField[T any](name string) LikeOrderField[T] {
+	return &likeOrderField[T]{
+		*fields.NewBaseField[T](name),
+	}
 }
 
 var OrderDoc = NewOrderField("")
+var NewOrderField = NewLikeOrderField[Order]
 
-func NewOrderField(name string) OrderField {
-	return &orderField{
-		*fields.NewBaseField[Order](name),
+func NewLikeOrderFieldSubFields(name string) LikeOrderFieldSubFields {
+	return &likeOrderField[any]{
+		*fields.NewBaseField[any](name),
 	}
 }
 
-func NewOrderFieldInline(name string) OrderFieldInline {
-	return &orderField{
-		*fields.NewBaseField[Order](name),
-	}
+var NewOrderFieldSubFields = NewLikeOrderFieldSubFields
+
+func (s *likeOrderField[T]) Uint64F() fields.Uint64Field {
+	return fields.NewUint64Field(fields.SubField(s.FullName(), "uint64"))
 }
 
-func (s *orderField) TimeF() fields.Uint64Field {
-	return fields.NewUint64Field(fields.SubField(s.FullName(), "time"))
+func (s *likeOrderField[T]) StringF() fields.StringField {
+	return fields.NewStringField(fields.SubField(s.FullName(), "string"))
 }
 
-func (s *orderField) ProcessorF() fields.StringField {
-	return fields.NewStringField(fields.SubField(s.FullName(), "processor"))
+func (s *likeOrderField[T]) LikeInt_elsetype_TimeTypeF() fields.IntegerField[elsetype.TimeType] {
+	return fields.NewIntegerField[elsetype.TimeType](fields.SubField(s.FullName(), "likeint_elsetype_timetype"))
 }
 
-func (s *orderField) AgeF() fields.IntegerField[elsetype.TimeType] {
-	return fields.NewIntegerField[elsetype.TimeType](fields.SubField(s.FullName(), "age"))
-}
-
-func (s *orderField) HourF() fields.UnIntegerField[elsetype.UTime, int] {
-	return fields.NewUnIntegerField[elsetype.UTime, int](fields.SubField(s.FullName(), "hour"))
+func (s *likeOrderField[T]) LikeUint_elsetype_UTimeF() fields.UnIntegerField[elsetype.UTime, int] {
+	return fields.NewUnIntegerField[elsetype.UTime, int](fields.SubField(s.FullName(), "likeuint_elsetype_utime"))
 }
