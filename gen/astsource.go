@@ -75,13 +75,14 @@ type TypeLoader struct {
 
 // loadedPackage 一个已加载包的信息
 type loadedPackage struct {
-	fset         *token.FileSet
-	files        []*ast.File
-	importMap    map[string]string          // alias → pkgPath
-	aliases      map[string]reflect.Kind    // type alias: Name → kind
-	typeElems    map[string]*astTypeSource  // 复合类型别名的 elem，如 type D []E 的 elem 是 E
-	types        map[string]*ast.StructType // type Name → StructType
-	aliasTargets map[string]*astTypeSource  // 类型别名声明 type A = C 的目标类型
+	fset           *token.FileSet
+	files          []*ast.File
+	importMap      map[string]string          // alias → pkgPath
+	aliases        map[string]reflect.Kind    // type alias: Name → kind
+	typeElems      map[string]*astTypeSource  // 复合类型别名的 elem，如 type D []E 的 elem 是 E
+	types          map[string]*ast.StructType // type Name → StructType
+	aliasTargets   map[string]*astTypeSource  // 类型别名声明 type A = C 的目标类型
+	typeDefTargets map[string]string          // type A B → 右侧类型名
 }
 
 // LoadPackage 加载指定包路径的所有 AST 信息（带缓存）
@@ -139,6 +140,8 @@ func (l *TypeLoader) LoadPackage(pkgPath string) (*loadedPackage, error) {
 				// 类型别名：type GPS float64
 				if ident, ok := typeSpec.Type.(*ast.Ident); ok {
 					pkg.aliases[typeSpec.Name.Name] = kindFromName(ident.Name)
+					// 记录 type A B → 右侧是 B
+					pkg.typeDefTargets[typeSpec.Name.Name] = ident.Name
 				}
 				// 类型别名：type D []E（右侧是 slice）
 				if arrayType, ok := typeSpec.Type.(*ast.ArrayType); ok {
@@ -179,13 +182,14 @@ func (l *TypeLoader) parsePackageDir(dir string) (*loadedPackage, error) {
 	}
 
 	pkg := &loadedPackage{
-		fset:         fset,
-		files:        make([]*ast.File, 0),
-		importMap:    make(map[string]string),
-		aliases:      make(map[string]reflect.Kind),
-		typeElems:    make(map[string]*astTypeSource),
-		types:        make(map[string]*ast.StructType),
-		aliasTargets: make(map[string]*astTypeSource),
+		fset:           fset,
+		files:          make([]*ast.File, 0),
+		importMap:      make(map[string]string),
+		aliases:        make(map[string]reflect.Kind),
+		typeElems:      make(map[string]*astTypeSource),
+		types:          make(map[string]*ast.StructType),
+		aliasTargets:   make(map[string]*astTypeSource),
+		typeDefTargets: make(map[string]string),
 	}
 	for _, p := range pkgs {
 		for _, file := range p.Files {
@@ -248,13 +252,14 @@ func (l *TypeLoader) resolvePkgDir(pkgPath string) string {
 // ─── AST 类型实现 TypeSource / FieldSource 接口 ─────────────
 
 type astTypeSource struct {
-	name    string
-	pkgPath string
-	kind    reflect.Kind
-	fields  []*astFieldSource
-	elem    *astTypeSource
-	loader  *TypeLoader
-	loaded  bool // 字段是否已加载
+	name      string
+	pkgPath   string
+	kind      reflect.Kind
+	fields    []*astFieldSource
+	elem      *astTypeSource
+	aliasedTo *astTypeSource // 指向别名目标
+	loader    *TypeLoader
+	loaded    bool // 字段是否已加载
 }
 
 func (a *astTypeSource) Name() string       { return a.name }
@@ -273,7 +278,20 @@ func (a *astTypeSource) Field(i int) FieldSource {
 
 // EnsureFields 懒加载字段信息：从磁盘加载该包的 AST 并解析字段
 func (a *astTypeSource) EnsureFields() {
-	if a.loaded || a.kind != reflect.Struct {
+	if a.loaded {
+		return
+	}
+	// 如果是别名，委托给目标类型
+	if a.aliasedTo != nil {
+		a.aliasedTo.EnsureFields()
+		a.kind = a.aliasedTo.kind
+		a.fields = a.aliasedTo.fields
+		a.elem = a.aliasedTo.elem
+		a.loaded = true
+		return
+	}
+	if a.kind != reflect.Struct {
+		a.loaded = true
 		return
 	}
 	if a.loader == nil {
@@ -289,6 +307,16 @@ func (a *astTypeSource) EnsureFields() {
 
 	st, ok := pkg.types[a.name]
 	if !ok {
+		// 自己没有字段定义，检查是不是 type A B（类型定义），沿链路追到真正的 struct
+		if next, ok := pkg.typeDefTargets[a.name]; ok {
+			target := parseAstTypeWithLoader(&ast.Ident{Name: next}, pkg.importMap, a.pkgPath, nil, a.loader)
+			target.EnsureFields()
+			a.kind = target.kind
+			a.fields = target.fields
+			a.elem = target.elem
+			a.loaded = true
+			return
+		}
 		// 可能是类型别名，检查别名表修正 kind
 		if realKind, ok := pkg.aliases[a.name]; ok {
 			a.kind = realKind
@@ -696,13 +724,14 @@ func registerFileToLoader(loader *TypeLoader, pkgPath string, file *ast.File, fi
 	if !ok {
 		// 创建一个空的 loadedPackage 占位
 		pkg = &loadedPackage{
-			fset:         token.NewFileSet(),
-			files:        make([]*ast.File, 0),
-			importMap:    make(map[string]string),
-			aliases:      make(map[string]reflect.Kind),
-			typeElems:    make(map[string]*astTypeSource),
-			types:        make(map[string]*ast.StructType),
-			aliasTargets: make(map[string]*astTypeSource),
+			fset:           token.NewFileSet(),
+			files:          make([]*ast.File, 0),
+			importMap:      make(map[string]string),
+			aliases:        make(map[string]reflect.Kind),
+			typeElems:      make(map[string]*astTypeSource),
+			types:          make(map[string]*ast.StructType),
+			aliasTargets:   make(map[string]*astTypeSource),
+			typeDefTargets: make(map[string]string),
 		}
 		loader.loaded[pkgPath] = pkg
 	}
@@ -744,7 +773,33 @@ func registerFileToLoader(loader *TypeLoader, pkgPath string, file *ast.File, fi
 				continue
 			}
 			if ident, ok := typeSpec.Type.(*ast.Ident); ok {
-				pkg.aliases[typeSpec.Name.Name] = kindFromName(ident.Name)
+				// 递归追到最终 Kind 和 elem
+				realKind := kindFromName(ident.Name)
+				resolvedName := ident.Name
+				var resolvedElem *astTypeSource
+				for depth := 0; depth < 20; depth++ {
+					if target, ok := pkg.aliasTargets[resolvedName]; ok {
+						realKind = target.kind
+						resolvedElem = target.elem
+						break
+					}
+					if next, ok := pkg.typeDefTargets[resolvedName]; ok {
+						resolvedName = next
+						realKind = kindFromName(next)
+						continue
+					}
+					if e, ok := pkg.typeElems[resolvedName]; ok {
+						realKind = reflect.Slice
+						resolvedElem = e
+						break
+					}
+					break
+				}
+				pkg.aliases[typeSpec.Name.Name] = realKind
+				pkg.typeDefTargets[typeSpec.Name.Name] = ident.Name
+				if realKind == reflect.Slice && resolvedElem != nil {
+					pkg.typeElems[typeSpec.Name.Name] = resolvedElem
+				}
 			}
 			if arrayType, ok := typeSpec.Type.(*ast.ArrayType); ok {
 				pkg.aliases[typeSpec.Name.Name] = reflect.Slice
@@ -834,59 +889,39 @@ func parseAstFieldWithLoader(f *ast.Field, importMap map[string]string, currentP
 func parseAstTypeWithLoader(expr ast.Expr, importMap map[string]string, currentPkgPath string, typeAliases map[string]reflect.Kind, loader *TypeLoader) *astTypeSource {
 	switch t := expr.(type) {
 	case *ast.Ident:
-		// 先检查是否是类型别名声明（type A = C），如果是，直接穿透到目标类型
+		k := kindFromName(t.Name)
+		pkgPath := currentPkgPath
+		if k != reflect.Struct && isBuiltinKind(k) {
+			pkgPath = ""
+		}
+		var elem *astTypeSource
+		var aliasedTo *astTypeSource
+
 		if loader != nil {
 			if pkg, err := loader.LoadPackage(currentPkgPath); err == nil {
-				if target, ok := pkg.aliasTargets[t.Name]; ok {
-					return target
+				if realKind, ok := pkg.aliases[t.Name]; ok {
+					k = realKind
 				}
-			}
-		}
-
-		k := kindFromName(t.Name)
-		// 关键：如果 kindFromName 直接识别为内置类型（非 Struct），
-		// 说明这是 Go 原生类型名（int/string/bool 等），pkgPath 必须为空
-		resolvedPkgPath := currentPkgPath
-		if k != reflect.Struct && isBuiltinKind(k) {
-			resolvedPkgPath = ""
-		}
-
-		// 查类型别名表
-		if realKind, ok := typeAliases[t.Name]; ok {
-			k = realKind
-		}
-
-		// 如果是 Slice 别名（如 type GPSes []GPS），从 loader 取 elem
-		var elem *astTypeSource
-		if k == reflect.Slice && loader != nil {
-			if pkg, err := loader.LoadPackage(currentPkgPath); err == nil {
 				if e, ok := pkg.typeElems[t.Name]; ok {
 					elem = e
 				}
-			}
-		}
-
-		// 如果是 struct，查 loader 缓存确认真实类型
-		if k == reflect.Struct {
-			if loader != nil {
-				if pkg, err := loader.LoadPackage(currentPkgPath); err == nil {
-					// 先查 aliases（处理 type A interface{ Do() } 等情况）
-					if realKind, ok := pkg.aliases[t.Name]; ok {
-						k = realKind
-					}
-					// 再查 types（处理真正的 struct）
-					if _, ok := pkg.types[t.Name]; ok {
-						k = reflect.Struct
-					}
+				if _, ok := pkg.types[t.Name]; ok {
+					k = reflect.Struct
+				}
+				// 查 aliasTargets（type A = C）
+				if target, ok := pkg.aliasTargets[t.Name]; ok {
+					aliasedTo = target
 				}
 			}
 		}
+
 		return &astTypeSource{
-			name:    t.Name,
-			pkgPath: resolvedPkgPath,
-			kind:    k,
-			elem:    elem,
-			loader:  loader,
+			name:      t.Name,
+			pkgPath:   pkgPath,
+			kind:      k,
+			elem:      elem,
+			aliasedTo: aliasedTo,
+			loader:    loader,
 		}
 	case *ast.SelectorExpr:
 		pkgAlias := ""

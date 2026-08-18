@@ -128,6 +128,20 @@ func (g *Generator) build(ts TypeSource) TypeInfo {
 		return info
 	}
 
+	// ─── 处理别名 ───
+	if astTS, ok := ts.(*astTypeSource); ok && astTS.aliasedTo != nil {
+		// 递归 build 目标类型，但用原始名字缓存
+		targetInfo := g.build(astTS.aliasedTo)
+		info := TypeInfo{
+			T:         ts, // 保留原始类型
+			Field:     targetInfo.Field,
+			NewField:  targetInfo.NewField,
+			EqualAble: targetInfo.EqualAble,
+		}
+		g.typeMap[key] = info
+		return info
+	}
+
 	if info, ok := g.lookupBuiltinDirect(ts); ok {
 		g.typeMap[key] = info
 		return info
@@ -337,9 +351,17 @@ func (g *Generator) buildSlice(ts TypeSource) (TypeInfo, bool) {
 	// 计算维度，同时找到最内层元素类型
 	dim := 1
 	current := ts.Elem()
+	if current == nil {
+		// 不应该发生，但给出明确错误信息而不是 panic
+		return TypeInfo{}, false
+	}
 	for current != nil && (current.Kind() == reflect.Slice || current.Kind() == reflect.Array) {
 		dim++
 		current = current.Elem()
+	}
+	if current == nil {
+		// 不应该发生，但给出明确错误信息而不是 panic
+		return TypeInfo{}, false
 	}
 	innermost := current // 最内层元素类型，如 int16
 
