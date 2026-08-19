@@ -24,7 +24,7 @@ func GetLoader() *TypeLoader {
 			depVersions: make(map[string]string),
 		}
 		dir, _ := os.Getwd()
-		l.goModDir = findGoModDir(dir)
+		l.goModDir = FindGoModDir(dir)
 		if l.goModDir != "" {
 			l.modulePath, _ = readModulePath(l.goModDir)
 			goModPath := filepath.Join(l.goModDir, "go.mod")
@@ -716,7 +716,7 @@ func resolvePkgPath(dir string) string {
 	}
 	modulePath, _ := readModulePath(dir)
 	if modulePath != "" {
-		goModDir := findGoModDir(dir)
+		goModDir := FindGoModDir(dir)
 		if goModDir != "" {
 			rel, _ := filepath.Rel(goModDir, dir)
 			if rel != "." && !strings.HasPrefix(rel, "..") {
@@ -792,17 +792,24 @@ func readModulePath(dir string) (string, error) {
 	return "", fmt.Errorf("go.mod not found")
 }
 
-func findGoModDir(dir string) string {
-	current := dir
+// FindGoModDir 从 start 目录开始向上查找包含 go.mod 的目录。
+// 找不到返回空字符串。
+func FindGoModDir(start string) string {
+	dir, err := filepath.Abs(start)
+	if err != nil {
+		return ""
+	}
+	dir = filepath.Clean(dir)
+
 	for {
-		if _, err := os.Stat(filepath.Join(current, "go.mod")); err == nil {
-			return current
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
 		}
-		parent := filepath.Dir(current)
-		if parent == current {
+		parent := filepath.Dir(dir)
+		if parent == dir {
 			return ""
 		}
-		current = parent
+		dir = parent
 	}
 }
 

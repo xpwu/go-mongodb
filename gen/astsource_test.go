@@ -547,7 +547,7 @@ func TestReadModulePath_NotFound(t *testing.T) {
 func TestFindGoModDir(t *testing.T) {
 	dir, _ := writeTempFile(t, "go.mod", "module test\n")
 	defer os.RemoveAll(dir)
-	if found := findGoModDir(dir); found == "" {
+	if found := FindGoModDir(dir); found == "" {
 		t.Error("findGoModDir should find dir")
 	}
 }
