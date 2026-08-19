@@ -420,6 +420,9 @@ func (b *StructFieldBuilder) registerDefaultKind() {
 	b.RegisterKind(reflect.Interface, func(rt reflect.Type) (TypeInfo, bool) {
 		thisImports := b.structCtx.imports
 		rtName := addDot(thisImports.add(rt.PkgPath())) + rt.Name()
+		if rtName == "" {
+			rtName = "any"
+		}
 		pkg := x.TypeFor[BaseField[any]]().PkgPath()
 
 		return TypeInfo{
