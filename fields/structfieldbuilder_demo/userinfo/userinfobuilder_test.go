@@ -3,7 +3,7 @@ package userinfo
 import (
 	"fmt"
 	"github.com/xpwu/go-mongodb/fields"
-	"github.com/xpwu/go-mongodb/zdemo/elsetype"
+	"github.com/xpwu/go-mongodb/fields/structfieldbuilder_demo/elsetype"
 	"reflect"
 )
 
