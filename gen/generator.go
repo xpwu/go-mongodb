@@ -518,7 +518,7 @@ func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 			} else {
 				println(fmt.Sprintf(
 					"NOT supported tag: minsize & truncate & omitempty are used in %s.%s.%s.",
-					ts.PkgPath(), ts.Name(), fs.Name))
+					ts.PkgPath(), ts.Name(), fs.Name()))
 			}
 		}
 
