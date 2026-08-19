@@ -22,8 +22,11 @@
 
 ## 安装
 
+有两种使用方式，选择其中一种即可：
+
+**方式一：go install（推荐，全局可用）**
+
 ```bash
-go get github.com/xpwu/go-mongodb
 go install github.com/xpwu/go-mongodb/cmd/gomongodbgen@latest
 ```
 
@@ -32,6 +35,19 @@ go install github.com/xpwu/go-mongodb/cmd/gomongodbgen@latest
 ```bash
 gomongodbgen -h
 ```
+
+**方式二：go run（无需安装，直接使用）**
+
+```go
+// 在 //go:generate 注释中直接引用远程模块路径
+//go:generate go run github.com/xpwu/go-mongodb/cmd/gomongodbgen
+```
+
+两种方式功能完全等价，都是执行同一个 CLI 入口。
+
+> **两种 go run 的区别：**
+> - `go run github.com/xpwu/...` → 直接运行远程模块（无需安装，下载即用）
+> - `go run ./cmd/mongodb_gen.go` → 运行你项目里自己写的 main 文件（集中管理方式，见下文）
 
 ## 快速开始
 
@@ -63,13 +79,27 @@ type UserInfo struct {
 }
 ```
 
-代码生成器会**自动找到紧邻的 struct 定义**，无需指定类型名。每个需要生成 Field 的结构体都需要单独一行 `//go:generate gomongodbgen`。
+如果你没有 `go install`，用方式二：
+
+```go
+//go:generate go run github.com/xpwu/go-mongodb/cmd/gomongodbgen
+
+type UserInfo struct {
+    ID     string  `bson:"_id"`
+    Name   string  `bson:"name"`
+    Age    int     `bson:"age"`
+    Amount float64 `bson:"amount"`
+}
+```
+
+代码生成器会**自动找到紧邻的 struct 定义**，无需指定类型名。每个需要生成 Field 的结构体都需要单独一行 `//go:generate`。
 
 ### 3. 运行代码生成
 
 ```bash
 go generate ./...
 ```
+或者点击 IDE 在 `//go:generate` 左侧显示的运行按钮（具体是否支持与 IDE 有关）。
 
 运行完毕后，同包目录下会自动生成 `zUserInfoField.go`（以及子包对应的生成文件）。
 
@@ -196,54 +226,99 @@ cli := client.MustGet(cfg) // 相同 Config 值复用同一个连接池
 ### go:generate 参数详解
 
 ```go
-//go:generate gomongodbgen -out-dir ./zgen -preserve-field
+//go:generate gomongodbgen -out-dir ./zgen -xopt.with-preserve-field
 ```
 
-| 参数 | 说明 | 默认值 |
-|------|------|--------|
-| `-out-dir` | 生成文件输出目录 | 结构体所在包的目录下 |
-| `-preserve-field` | 无 bson tag 时保留 Go 原始字段名（不转小写） | 关闭（默认转小写） |
+| 参数 | 说明 | 对应代码 API | 默认值 |
+|------|------|-------------|--------|
+| `-out-dir` | 生成文件输出目录（相对路径基于当前 `.go` 文件所在目录） | `cli.OutDir()` | 当前 `.go` 文件所在目录 |
+| `-target-pkg` | 生成文件的 `package` 声明名 | `cli.TargetPkg()` | 与源文件同包 |
+| `-add-map` | 自定义类型映射，格式：`Type,FieldType,NewFunc,EqualAble`（可重复） | `cli.AddMap()` | 无 |
+| `-xopt.with-preserve-field` | 保留原名（不转小写），遇到 omitempty/minsize/truncate 等 tag **会报错** | `xopt.WithPreserveField(false)` | 关闭 |
+| `-xopt.with-preserve-field-ignore-tag-err` | 保留原名，遇到 omitempty/minsize/truncate 等 tag **静默跳过** | `xopt.WithPreserveField(true)` | 关闭 |
+| `-xopt.with-bson-options-use-json-tags` | 使用 JSON tag 替代 bson tag | `xopt.WithBsonOptions()` + JSON 配置 | 关闭 |
 
-> 不需要 `-type` 参数。生成器自动找到紧邻 `//go:generate` 注释下方的 struct 定义。
+> 生成器自动扫描 `//go:generate` 注释下方紧邻的 struct 定义。
 
-### 集中管理：cli.Run
+### 路径规则
 
-当项目中有多个结构体需要生成时，逐个写 `//go:generate` 难以统一参数。使用 `cli.Run` 可以在一个地方集中管理所有类型和参数：
+所有路径参数（如 `-out-dir`）遵循以下规则：
 
-// mongodb_gen.go（放在你的业务包中）
+| 写法 | 含义 | 示例 |
+|------|------|------|
+| `./zgen` | 相对路径，基于**书写 `//go:generate` 的 `.go` 文件所在目录** | `model/zgen/` |
+| `$GOMOD/zgen` | 基于项目根目录（go.mod 所在位置）的路径 | `project-root/zgen/` |
+| 磁盘绝对路径（如 `/home/user/zgen`） | **报错，不支持** | — |
+
+**核心原则：哪里写的路径，就相对于哪里。**
+
+- 在 `//go:generate` 注释里写的 `./zgen` → 相对于该 `.go` 文件目录
+- 在 `cli` API 里写的 `OutDir("./zgen")` → 相对于 `mongodb_gen.go` 文件目录
+- 使用 `$GOMOD/zgen` → 相对于 go.mod 所在目录（找不到 go.mod 直接报错退出）
+
+### 集中管理：cli API
+
+当项目中有多个结构体需要生成时，逐个写 `//go:generate` 难以统一参数。使用 `cli` 包可以在一个地方集中管理：
+
+**mongodb_gen.go（放在你的项目中任意位置）：**
+
 ```go
-
 //go:build ignore
 
-package userinfo
+package main
 
 import (
-    "github.com/xpwu/go-mongodb/gen/cli"
+    "github.com/xpwu/go-mongodb/cmd/gomongodbgen/cli"
+    "github.com/xpwu/go-mongodb/xopt"
 )
 
-func init() {
-    cli.Run(
-        cli.NewBuildConfig().
-            SetOutDir("./zgen").
-            AddType("UserInfo").
-            AddType("Order").
-            AddType("Product").
-            AddMap("github.com/xpwu/go-mongodb/fields.ObjectID", "fields.ObjectIDField").
-            AddMap("time.Time", "fields.TimeField").
-            WithPreserveField(),
+func main() {
+    cli.RunFromArgs(
+        cli.NewBuildConfig(
+            xopt.WithPreserveField(true), // true = 忽略 tag 错误（对应 -xopt.with-preserve-field-ignore-tag-err）
+        ).OutDir("$GOMOD/zgen").
+            AddMap("github.com/xpwu/go-mongodb/fields.ObjectID",
+                "github.com/xpwu/go-mongodb/fields.ObjectIDField",
+                "github.com/xpwu/go-mongodb/fields.NewObjectIDField",
+                false).
+            AddMap("time.Time",
+                "github.com/xpwu/go-mongodb/fields.TimeField",
+                "github.com/xpwu/go-mongodb/fields.NewTimeField",
+                false),
     )
 }
 ```
 
-运行：
+**在结构体文件中引用：**
 
-```bash
-go generate ./mongodb_gen.go
-# 或直接运行测试触发
-go test ./mongodb_gen.go
+```go
+// model/userinfo.go
+
+// 替换 ./cmd/ 为你实际存放 mongodb_gen.go 的目录
+//go:generate go run ./cmd/mongodb_gen.go
+
+type UserInfo struct {
+    ID   string `bson:"_id"`
+    Name string `bson:"name"`
+    Age  int    `bson:"age"`
+}
 ```
 
-`cli.Run` 通过调用栈自动定位源文件所在目录，无需手动指定包路径。
+**运行：**
+
+```bash
+go generate ./...
+# 或者直接运行
+go run ./cmd/mongodb_gen.go
+```
+也可以点击 IDE 在 `//go:generate` 左侧显示的运行按钮（具体是否支持与 IDE 有关）。
+
+**参数优先级：命令行 > cli API 设置 > 默认值。** 例如：
+
+```bash
+# cli 里写了 OutDir("$GOMOD/zgen")，但这次临时改输出位置：
+go run ./cmd/mongodb_gen.go -out-dir ./other
+```
 
 ### 自定义类型
 
@@ -256,29 +331,74 @@ go test ./mongodb_gen.go
 
 #### 生成自定义字段 Field
 
-如果你需要为自定义类型生成特定的 `Field` 类型及其查询/更新方法（例如自定义的时间范围类型、枚举类型），则需要编写对应的 `Field` 结构体及构造函数，然后在 `StructFieldBuilder` 中通过 `RegisterType` 注册该 Field。注册后，生成的代码中对应字段就会使用你定义的 `Field` 类型。
+如果你需要为自定义类型生成特定的 `Field` 类型及其查询/更新方法（例如自定义的时间范围类型、枚举类型），则需要编写对应的 `Field` 结构体及构造函数，然后使用 `-add-map` 参数或者 `cli.AddMap()` 方法注册该 Field。注册后，生成的代码中对应字段就会使用你定义的 `Field` 类型。
 
 ### 代码生成与运行时的一致性
 
 `xopt.Option`（包括 `WithPreserveField`）**同时影响代码生成阶段和运行时 MongoDB 客户端编解码阶段**。两者必须使用相同的 Option 配置，否则字段名映射不一致，导致查询或更新失败。
 
 ```go
-// 代码生成阶段（cli.Run 或 go:generate）
-cli.Run(
-    cli.NewBuildConfig().
-        AddType("UserInfo").
-        WithPreserveField(),  // ← 生成代码时保留原名
+// 代码生成阶段（cli API 或 go:generate）
+cli.RunFromArgs(
+    cli.NewBuildConfig(
+        xopt.WithPreserveField(true), // 与运行时保持一致
+    ).OutDir("$GOMOD/zgen"),
 )
 
 // 运行时创建 MongoDB Client
-opt := xopt.WithPreserveField() // ← 运行时也必须保留原名，否则对不上
+cfg := client.Config{URI: "mongodb://localhost:27017/xxxx"}
+opt := xopt.WithPreserveField(true) // ← 必须与生成阶段一致
 cli := client.MustGet(cfg, opt)
 ```
 
-`WithPreserveField` 的语义：
-- **没有 bson tag 的情况下**，保留 Go 结构体字段的原始名称（不做小写转换）
-- MongoDB Go Driver 官方默认行为是将字段名转为小写
-- 如果生成阶段用了 `WithPreserveField` 但运行时没用（或反过来），字段名会不匹配
+`WithPreserveField` 的两种模式：
+
+| 调用 | `PreserveField` | `IgnoreTagErr` | 行为 |
+|------|----------------|----------------|------|
+| `xopt.WithPreserveField(false)` | `true` | `false` | 保留原名，遇到 `omitempty`/`minsize`/`truncate` **报错** |
+| `xopt.WithPreserveField(true)` | `true` | `true` | 保留原名，遇到 `omitempty`/`minsize`/`truncate` **静默跳过** |
+
+> `WithPreserveField` 内部永远设置 `PreserveField = true`，唯一的参数 `ignoreTagErr` 控制是否忽略 tag 错误。
+
+#### WithPreserveField 的 bson tag 限制
+
+使用 `WithPreserveField` 时，对 bson tag 有以下限制和支持：
+
+**不支持的 tag 属性（写在字段 tag 上会被忽略或报错，取决于 `ignoreTagErr` 参数的值）：**
+- `omitempty` — 不支持
+- `minsize` — 不支持
+- `truncate` — 不支持
+
+**支持的 tag 写法：**
+- `inline` — 支持，内嵌字段会被展开处理
+- 重命名（如 `bson:"my_name"`）— 支持，生成的 Field 使用重命名后的字段名
+- `bson:"-"`（skip）— 支持，该字段会被跳过不生成 Field
+
+**支持通过 `options.BSONOptions` 设置：**
+- `omitempty`、`minsize`、`truncate` 等参数可以通过 `options.BSONOptions` 结构体在运行时统一配置，而非写在 struct tag 上
+
+示例：
+
+```go
+type User struct {
+    ID        string    `bson:"_id"`
+    Name      string    `bson:"name"`                 // ✅ 支持重命名
+    Password  string    `bson:"-"`                   // ✅ 支持 skip
+    Profile   Profile   `bson:"profile,inline"`      // ✅ 支持 inline
+    SecretKey string    `bson:"secret,omitempty"`     // ❌ omitempty 不支持（IgnoreTagErr=false 时报错）
+    Count     int       `bson:"count,minsize"`       // ❌ minsize 不支持（IgnoreTagErr=false 时报错）
+    Score     float64   `bson:"score,truncate"`      // ❌ truncate 不支持（IgnoreTagErr=false 时报错）
+}
+
+// 运行时通过 BSONOptions 配置（而非 tag）
+bsonOpts := &options.BSONOptions{
+    OmitEmpty: true,
+    MinSize:   true,
+    Truncate:  false,
+}
+opt := xopt.WithBsonOptions(bsonOpts)
+cli := client.MustGet(cfg, opt)
+```
 
 > ⚠️ **规则：生成阶段和运行时阶段的 `xopt.Option` 必须完全一致。**
 
