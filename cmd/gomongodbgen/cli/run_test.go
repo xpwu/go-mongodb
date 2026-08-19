@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"errors"
+	"github.com/xpwu/go-mongodb/field"
 	"github.com/xpwu/go-mongodb/gen"
 	"os"
 	"path/filepath"
@@ -524,5 +526,28 @@ func TestResolveOutDir_GOMODLowerCase(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "did you mean $GOMOD") {
 		t.Errorf("error = %q, should suggest $GOMOD", err.Error())
+	}
+}
+
+// 定义一个命名函数用于测试
+func newTestField(name string) field.Field {
+	return nil // 假的，只用于测试类型解析
+}
+
+func TestAddMapByInfo_Valid(t *testing.T) {
+	b := NewBuildConfig()
+	info := NewTypeInfo[int](newTestField)
+	b.AddMapByInfo(info)
+	if b.err != nil {
+		t.Errorf("AddMapByInfo set err: %v", b.err)
+	}
+}
+
+func TestAddMapByInfo_WithError(t *testing.T) {
+	b := NewBuildConfig()
+	info := TypeInfo{Err: errors.New("test error")}
+	b.AddMapByInfo(info)
+	if b.err == nil {
+		t.Error("expected err to be set from TypeInfo.Err, got nil")
 	}
 }
