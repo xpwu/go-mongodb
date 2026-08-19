@@ -51,6 +51,7 @@ func NewGenerator(config *Config) *Generator {
 		config:     config,
 		typeMap:    make(map[string]TypeInfo),
 		likeStruct: make(map[string]TypeInfo),
+		imports:    newAllImports(),
 	}
 }
 
@@ -593,7 +594,7 @@ func extractBetweenFlexible(s, start, end string) string {
 
 	// 从 startIdx 开始查找 end
 	endIdx := strings.Index(s[startIdx:], end)
-	if endIdx == -1 {
+	if endIdx == -1 || endIdx == 0 {
 		// end 不存在，截取到末尾
 		return s[startIdx:]
 	}
