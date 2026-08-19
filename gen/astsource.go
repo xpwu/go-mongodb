@@ -267,9 +267,14 @@ func (a *astTypeSource) Kind() reflect.Kind {
 
 	return a.kind
 }
-func (a *astTypeSource) NumField() int    { return len(a.fields) }
-func (a *astTypeSource) Elem() TypeSource { return a.elem }
-func (a *astTypeSource) IsBuiltin() bool  { return a.pkgPath == "" }
+func (a *astTypeSource) NumField() int { return len(a.fields) }
+func (a *astTypeSource) Elem() TypeSource {
+	if a.elem == nil {
+		return nil
+	}
+	return a.elem
+}
+func (a *astTypeSource) IsBuiltin() bool { return a.pkgPath == "" }
 
 func (a *astTypeSource) Field(i int) FieldSource {
 	if i < 0 || i >= len(a.fields) {
