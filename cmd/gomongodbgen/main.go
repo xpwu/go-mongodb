@@ -1,153 +1,28 @@
 package main
 
 import (
-	"flag"
-	"fmt"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
-
-	"github.com/xpwu/go-mongodb/gen"
+	"github.com/xpwu/go-mongodb/cmd/gomongodbgen/cli"
 )
 
-type stringSlice []string
-
-func (s *stringSlice) String() string {
-	return fmt.Sprintf("%v", *s)
-}
-
-func (s *stringSlice) Set(value string) error {
-	*s = append(*s, value)
-	return nil
-}
-
+// gomongodbgen 是 go-mongodb 的代码生成器 CLI 入口。
+//
+// 使用方式：在 struct 上方写 //go:generate 注释
+//
+//	//go:generate gomongodbgen
+//	type User struct {
+//	    ID   string `bson:"_id"`
+//	    Name string `bson:"name"`
+//	}
+//
+// 可选参数：
+//   - -out-dir <path>   输出目录（相对路径或 $GOMOD/...）
+//   - -target-pkg <pkg>  目标包路径
+//   - -add-map ...       自定义类型映射（可重复）
+//   - -xopt.with-preserve-field
+//   - -xopt.with-bson-options-use-json-tags
+//   - -xopt.with-preserve-field-ignore-tag-err
+//
+// 详细文档见 README 和 ./cli 包。
 func main() {
-	var typeNames stringSlice
-	flag.Var(&typeNames, "type", "struct name to generate (can be repeated, auto-scan if empty)")
-	dir := flag.String("out-dir", ".", "output directory for generated files")
-	pkg := flag.String("target-pkg", "", "target package path for output (empty = same as source)")
-
-	useJSONTags := flag.Bool("xopt.with-bson-options-use-json-tags", false,
-		`equivalent to xopt.WithBsonOptions(&go.mongodb.org/mongo-driver/v2/mongo/options.BSONOptions{UseJSONStructTags: true}).
-MUST match the xopt.Options used in your go-mongodb/client/MustGet, GetFromCache or NewClient code.`)
-	preserveField := flag.Bool("xopt.with-preserve-field", false,
-		`equivalent to xopt.WithPreserveField(false).
-MUST match the xopt.Options used in your go-mongodb/client/MustGet, GetFromCache or NewClient code.`)
-	preserveFieldIgnoreTagErr := flag.Bool("xopt.with-preserve-field-ignore-tag-err", false,
-		`equivalent to xopt.WithPreserveField(true).
-MUST match the xopt.Options used in your go-mongodb/client/MustGet, GetFromCache or NewClient code.`)
-
-	var mapFlags stringSlice
-	flag.Var(&mapFlags, "add-map",
-		`custom type mapping: Type,FieldType,NewFunc,EqualAble (can be repeated)
-
-Type:       fully qualified source type identifier
-            e.g. "int" or "github.com/foo/bar.MyType"
-FieldType:  fully qualified target field type
-            e.g. "github.com/foo/fields.IntField"
-NewFunc:    fully qualified constructor function
-            e.g. "github.com/foo/fields.NewIntField"
-EqualAble:  "true" or "false"
-            true  -> FieldType implements/embeds github.com/xpwu/filter/ComparableFilter
-            false -> otherwise
-
-Example:
-  -add-map=github.com/foo/bar.GPS,github.com/foo/fields.FloatField,github.com/foo/fields.NewFloatField,false
-  -add-map=github.com/foo/bar.Address,github.com/foo/fields.StringField,github.com/foo/fields.NewStringField,true
-
-NOTE: Generic types and generic functions are NOT supported.`)
-
-	flag.Parse()
-
-	config := gen.NewConfig()
-	config.Dir = *dir
-	config.Pkg = *pkg
-	config.UseJSONTags = *useJSONTags
-
-	config.PreserveField = *preserveField || *preserveFieldIgnoreTagErr
-	config.IgnoreTagErr = *preserveFieldIgnoreTagErr
-
-	// 解析 -add-map（支持多次）
-	for _, raw := range mapFlags {
-		parts := strings.SplitN(raw, ",", 4)
-		if len(parts) != 4 {
-			fmt.Fprintf(os.Stderr, "-add-map format: Type,FieldType,NewFunc,EqualAble\n  got: %s\n", raw)
-			os.Exit(1)
-		}
-
-		// 校验：不支持泛型（通过 [] 判断）
-		for _, p := range parts[:3] {
-			if strings.Contains(p, "[") {
-				fmt.Fprintf(os.Stderr, "-add-map does not support generic types or functions: %s\n", p)
-				os.Exit(1)
-			}
-		}
-
-		equalAble, err := strconv.ParseBool(parts[3])
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "-add-map EqualAble must be \"true\" or \"false\", got %q\n", parts[3])
-			os.Exit(1)
-		}
-		config.AddMap(parts[0], parts[1], parts[2], equalAble)
-	}
-
-	// 确定源文件目录（不是输出目录）
-	srcDir := determineSrcDir()
-
-	// 确定要处理的 struct 列表
-	var structNames []string
-
-	if len(typeNames) > 0 {
-		structNames = append(structNames, typeNames...)
-	} else {
-		// 自动扫描：用源文件目录 go:generate 注释下方的 struct
-		absDir, _ := filepath.Abs(srcDir)
-		scanResult, err := gen.ScanDir(absDir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "scan error: %v\n", err)
-			os.Exit(1)
-		}
-		if scanResult == nil || len(scanResult.Structs) == 0 {
-			fmt.Println("no struct found after //go:generate comment, nothing to do")
-			return
-		}
-		for _, s := range scanResult.Structs {
-			structNames = append(structNames, s.Name)
-		}
-	}
-
-	// 逐个生成
-	for _, name := range structNames {
-		ts, err := gen.ParseStructFromFile(srcDir, name)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "parse %s error: %v\n", name, err)
-			os.Exit(1)
-		}
-		if ts == nil {
-			fmt.Fprintf(os.Stderr, "struct %s not found in %s\n", name, srcDir)
-			os.Exit(1)
-		}
-
-		generator := gen.NewGenerator(config)
-		generator.Generate(ts)
-		fmt.Printf("generated: %s → z%sField.go\n", name, name)
-	}
-}
-
-// determineSrcDir 确定源文件所在目录
-func determineSrcDir() string {
-	if goFile := os.Getenv("GOFILE"); goFile != "" {
-		dir := filepath.Dir(goFile)
-		if filepath.IsAbs(dir) {
-			return dir
-		}
-		abs, err := filepath.Abs(dir)
-		if err == nil {
-			return abs
-		}
-	}
-	// fallback: 当前工作目录
-	dir, _ := os.Getwd()
-	return dir
+	cli.RunFromArgs(cli.NewBuildConfig())
 }
