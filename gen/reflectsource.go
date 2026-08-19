@@ -18,17 +18,22 @@ func (r *reflectTypeSource) NumField() int {
 	return r.t.NumField()
 }
 func (r *reflectTypeSource) Elem() TypeSource {
-	if r.t.Kind() == reflect.Ptr || r.t.Kind() == reflect.Slice || r.t.Kind() == reflect.Array {
+	switch r.t.Kind() {
+	case reflect.Ptr, reflect.Slice, reflect.Array, reflect.Map:
 		return &reflectTypeSource{t: r.t.Elem()}
 	}
 	return nil
 }
+
 func (r *reflectTypeSource) IsBuiltin() bool { return r.t.PkgPath() == "" }
 
 // EnsureFields 反射版不需要懒加载，空实现
 func (r *reflectTypeSource) EnsureFields() {}
 
 func (r *reflectTypeSource) Field(i int) FieldSource {
+	if r.t.Kind() != reflect.Struct || i < 0 || i >= r.t.NumField() {
+		return nil
+	}
 	return &reflectFieldSource{f: r.t.Field(i)}
 }
 
