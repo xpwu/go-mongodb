@@ -104,6 +104,22 @@ func (b *BuildConfig) AddMap(typeIdent, fieldType, newFunc string, equalAble boo
 	return b
 }
 
+func toString(rt ReflectType) string {
+	if rt.PkgPath() == "" {
+		return rt.Name()
+	}
+
+	return fmt.Sprintf("%s.%s", rt.PkgPath(), rt.Name())
+}
+
+func (b *BuildConfig) AddMapByInfo(typeInfo TypeInfo) *BuildConfig {
+	if typeInfo.Err != nil {
+		b.err = typeInfo.Err
+		return b
+	}
+	return b.AddMap(toString(typeInfo.T), toString(typeInfo.Field), toString(typeInfo.NewField), typeInfo.EqualAble)
+}
+
 // RunFromArgs 解析 os.Args 中的命令行参数，叠加到 BuildConfig 上，然后执行生成。
 //
 // 参数优先级：命令行 > API 设置。
