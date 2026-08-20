@@ -234,8 +234,7 @@ cli := client.MustGet(cfg) // 相同 Config 值复用同一个连接池
 | `-out-dir` | 生成文件输出目录（相对路径基于当前 `.go` 文件所在目录） | `cli.OutDir()` | 当前 `.go` 文件所在目录 |
 | `-target-pkg` | 生成文件的 `package` 声明名 | `cli.TargetPkg()` | 与源文件同包 |
 | `-add-map` | 自定义类型映射，格式：`Type,FieldType,NewFunc,EqualAble`（可重复） | `cli.AddMap()` | 无 |
-| `-xopt.with-preserve-field` | 保留原名（不转小写），遇到 omitempty/minsize/truncate 等 tag **会报错** | `xopt.WithPreserveField(false)` | 关闭 |
-| `-xopt.with-preserve-field-ignore-tag-err` | 保留原名，遇到 omitempty/minsize/truncate 等 tag **静默跳过** | `xopt.WithPreserveField(true)` | 关闭 |
+| `-xopt.with-preserve-field` | 保留原名（不转小写），原始 bson tag 完整保留（含 `omitempty`/`minsize`/`truncate`），本级生效，不传递到嵌套字段 | `xopt.WithPreserveField()` | 关闭 |
 | `-xopt.with-bson-options-use-json-tags` | 使用 JSON tag 替代 bson tag | `xopt.WithBsonOptions()` + JSON 配置 | 关闭 |
 
 > 生成器自动扫描 `//go:generate` 注释下方紧邻的 struct 定义。
@@ -275,7 +274,7 @@ import (
 func main() {
     cli.RunFromArgs(
         cli.NewBuildConfig(
-            xopt.WithPreserveField(true), // true = 忽略 tag 错误（对应 -xopt.with-preserve-field-ignore-tag-err）
+            xopt.WithPreserveField(),
         ).OutDir("$GOMOD/zgen").
             AddMap("github.com/xpwu/go-mongodb/fields.ObjectID",
                 "github.com/xpwu/go-mongodb/fields.ObjectIDField",
@@ -341,60 +340,60 @@ go run ./cmd/mongodb_gen.go -out-dir ./other
 // 代码生成阶段（cli API 或 go:generate）
 cli.RunFromArgs(
     cli.NewBuildConfig(
-        xopt.WithPreserveField(true), // 与运行时保持一致
+        xopt.WithPreserveField(), // 与运行时保持一致
     ).OutDir("$GOMOD/zgen"),
 )
 
 // 运行时创建 MongoDB Client
 cfg := client.Config{URI: "mongodb://localhost:27017/xxxx"}
-opt := xopt.WithPreserveField(true) // ← 必须与生成阶段一致
+opt := xopt.WithPreserveField() // ← 必须与生成阶段一致
 cli := client.MustGet(cfg, opt)
 ```
 
-`WithPreserveField` 的两种模式：
+#### WithPreserveField 的 bson tag 说明
 
-| 调用 | `PreserveField` | `IgnoreTagErr` | 行为 |
-|------|----------------|----------------|------|
-| `xopt.WithPreserveField(false)` | `true` | `false` | 保留原名，遇到 `omitempty`/`minsize`/`truncate` **报错** |
-| `xopt.WithPreserveField(true)` | `true` | `true` | 保留原名，遇到 `omitempty`/`minsize`/`truncate` **静默跳过** |
-
-> `WithPreserveField` 内部永远设置 `PreserveField = true`，唯一的参数 `ignoreTagErr` 控制是否忽略 tag 错误。
-
-#### WithPreserveField 的 bson tag 限制
-
-使用 `WithPreserveField` 时，对 bson tag 有以下限制和支持：
-
-**不支持的 tag 属性（写在字段 tag 上会被忽略或报错，取决于 `ignoreTagErr` 参数的值）：**
-- `omitempty` — 不支持
-- `minsize` — 不支持
-- `truncate` — 不支持
+使用 `WithPreserveField` 时，原始 bson tag 会被完整保留并透传到生成的代码中。三个属性 `omitempty`、`minsize`、`truncate` **在当前字段上生效，但不会传递到嵌套 struct 字段**（这是 MongoDB Go Driver v2 的限制，无法改变）。
 
 **支持的 tag 写法：**
-- `inline` — 支持，内嵌字段会被展开处理
-- 重命名（如 `bson:"my_name"`）— 支持，生成的 Field 使用重命名后的字段名
-- `bson:"-"`（skip）— 支持，该字段会被跳过不生成 Field
-
-**支持通过 `options.BSONOptions` 设置：**
-- `omitempty`、`minsize`、`truncate` 等参数可以通过 `options.BSONOptions` 结构体在运行时统一配置，而非写在 struct tag 上
+- `omitempty` — ✅ 本级生效，零值字段在编解码时被省略
+- `minsize` — ✅ 本级生效，小整数编码为 int32
+- `truncate` — ✅ 本级生效（decode 阶段：BSON double 截断后赋值给整型/float32 字段）
+- `inline` — ✅ 支持，内嵌字段会被展开处理
+- 重命名（如 `bson:"my_name"`）— ✅ 支持，生成的 Field 使用重命名后的字段名
+- `bson:"-"`（skip）— ✅ 支持，该字段会被跳过不生成 Field
 
 示例：
 
 ```go
-type User struct {
-    ID        string    `bson:"_id"`
-    Name      string    `bson:"name"`                 // ✅ 支持重命名
-    Password  string    `bson:"-"`                   // ✅ 支持 skip
-    Profile   Profile   `bson:"profile,inline"`      // ✅ 支持 inline
-    SecretKey string    `bson:"secret,omitempty"`     // ❌ omitempty 不支持（IgnoreTagErr=false 时报错）
-    Count     int       `bson:"count,minsize"`       // ❌ minsize 不支持（IgnoreTagErr=false 时报错）
-    Score     float64   `bson:"score,truncate"`      // ❌ truncate 不支持（IgnoreTagErr=false 时报错）
+type Profile struct {
+	Bio  string `bson:"bio,omitempty"` // ✅ omitempty 本级生效：Bio 为零值时省略
+	Rank int    `bson:"rank,minsize"` // ✅ minsize 本级生效：Rank 小值时编码为 int32
 }
 
-// 运行时通过 BSONOptions 配置（而非 tag）
+type User struct {
+	ID       string  `bson:"_id"`
+	Name     string  `bson:"name"`                // ✅ 支持重命名
+	Password string  `bson:"-"`                   // ✅ 支持 skip
+	Profile  Profile `bson:"profile,inline"`      // ✅ 支持 inline
+
+	SecretKey string  `bson:"secret,omitempty"`   // ✅ omitempty 本级生效（string 零值省略）
+	Count     int     `bson:"count,minsize"`      // ✅ minsize 本级生效（小值编码为 int32）
+	Score     float64 `bson:"score,truncate"`     // ✅ truncate 本级生效（double→整型截断，double→float64 不截断）
+
+	Extra Profile `bson:"extra,omitempty"`        // ⚠️ omitempty 只判断 Extra 整体是否零值（Profile{}），不会传递到 Profile 内部的 Bio、Rank 字段
+}
+```
+
+**说明：**
+- `SecretKey`、`Count`、`Score` 是标量字段，`omitempty` / `minsize` / `truncate` 直接在本字段上生效。
+- `Extra` 是嵌套 struct 字段，`omitempty` 只判断 `Extra` 整体是否为零值（`Profile{}`），**不会**自动让 `Profile.Bio` 或 `Profile.Rank` 的 tag 也获得 `omitempty` / `minsize`——这就是"不传递到嵌套字段"的含义。
+
+```go
+// 运行时也可以通过 BSONOptions 统一配置（效果相同，作用于所有字段）：
 bsonOpts := &options.BSONOptions{
-    OmitEmpty: true,
-    MinSize:   true,
-    Truncate:  false,
+	OmitEmpty:              true,
+	IntMinSize:             true,
+	AllowTruncatingDoubles: false,
 }
 opt := xopt.WithBsonOptions(bsonOpts)
 cli := client.MustGet(cfg, opt)
