@@ -13,6 +13,7 @@ import (
 	"github.com/xpwu/go-mongodb/x"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+	"math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -269,18 +270,57 @@ type PreserveStructCodec struct {
 
 	// Encode/Decode Context
 	UseJSONStructTags       bool
-	UseLocalTimeZone        bool
-	ZeroMaps                bool
 	OmitEmpty               bool
 	ErrorOnInlineDuplicates bool
 	OmitZeroStruct          bool
 	ZeroStructs             bool
+	IntMinSize              bool
 }
 
 var (
 	_ bson.ValueEncoder = &PreserveStructCodec{}
 	_ bson.ValueDecoder = &PreserveStructCodec{}
 )
+
+func fitsIn32Bits(i int64) bool {
+	return math.MinInt32 <= i && i <= math.MaxInt32
+}
+
+func integerEncodeValue(ec bson.EncodeContext,
+	vw bson.ValueWriter, val reflect.Value, minSize bool) (err error, processed bool) {
+
+	switch val.Kind() {
+	case reflect.Int8, reflect.Int16, reflect.Int32:
+		return vw.WriteInt32(int32(val.Int())), true
+	case reflect.Int:
+		i64 := val.Int()
+		if fitsIn32Bits(i64) {
+			return vw.WriteInt32(int32(i64)), true
+		}
+		return vw.WriteInt64(i64), true
+	case reflect.Int64:
+		i64 := val.Int()
+		if minSize && fitsIn32Bits(i64) {
+			return vw.WriteInt32(int32(i64)), true
+		}
+		return vw.WriteInt64(i64), true
+
+	case reflect.Uint8, reflect.Uint16:
+		return vw.WriteInt32(int32(val.Uint())), true
+	case reflect.Uint, reflect.Uint32, reflect.Uint64:
+		u64 := val.Uint()
+
+		if u64 <= math.MaxInt32 && minSize {
+			return vw.WriteInt32(int32(u64)), true
+		}
+		if u64 > math.MaxInt64 {
+			return fmt.Errorf("%d overflows int64", u64), true
+		}
+		return vw.WriteInt64(int64(u64)), true
+	}
+
+	return nil, false
+}
 
 // NewPreserveStructCodec returns a StructCodec that uses x.ParseStructTags for struct tag parsing.
 func NewPreserveStructCodec(bsonOpts *options.BSONOptions) *PreserveStructCodec {
@@ -299,8 +339,7 @@ func NewPreserveStructCodec(bsonOpts *options.BSONOptions) *PreserveStructCodec 
 		structCodec.OmitEmpty = bsonOpts.OmitEmpty
 		structCodec.ErrorOnInlineDuplicates = bsonOpts.ErrorOnInlineDuplicates
 		structCodec.UseJSONStructTags = bsonOpts.UseJSONStructTags
-		structCodec.ZeroMaps = bsonOpts.ZeroMaps
-		structCodec.UseLocalTimeZone = bsonOpts.UseLocalTimeZone
+		structCodec.IntMinSize = bsonOpts.IntMinSize
 	}
 
 	return structCodec
@@ -381,6 +420,15 @@ func (sc *PreserveStructCodec) EncodeValue(ec bson.EncodeContext, vw bson.ValueW
 		}
 
 		ectx := ec
+
+		err, processed := integerEncodeValue(ectx, vw2, rv, sc.IntMinSize || desc.minSize)
+		if processed {
+			if err != nil {
+				return err
+			}
+			continue
+		}
+
 		err = encoder.EncodeValue(ectx, vw2, rv)
 		if err != nil {
 			return err
