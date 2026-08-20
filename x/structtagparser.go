@@ -74,8 +74,8 @@ import (
 type StructTags struct {
 	Name      string
 	OmitEmpty bool
-	MinSize   bool // todo not support
-	Truncate  bool // todo not support
+	MinSize   bool
+	Truncate  bool
 	Inline    bool
 	Skip      bool
 }
