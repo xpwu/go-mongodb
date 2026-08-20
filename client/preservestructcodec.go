@@ -218,8 +218,9 @@ Derived from: go.mongodb.org/mongo-driver/v2@v2.8.0/bson/struct_codec.go
 Modifications:
   - Field names preserve OriginalName instead of being forcibly lowercased
   - EncodeContext reconstruction removed (v2 said no, so we stopped asking)
-  - Field-level `omitempty`, `truncate` and `minsize` flags are ignored (v2 made propagation impossible; implement MarshalBSON if you need them)
-  - No cycle detection (same as upstream; don't self-reference your structs, please)
+	- Field-level `omitempty`, `truncate` and `minsize` tags are respected on the current field
+			but are NOT propagated to nested struct fields (v2 made propagation impossible)
+	- No cycle detection (same as upstream; don't self-reference your structs, please)
 
 This exists because v2 decided your field names are nobody's business but theirs.
 I respectfully disagree.
@@ -234,7 +235,7 @@ leaving exactly one window. It was very inspiring. 🙃
 修改内容:
   - 字段名保留 OriginalName，不再被强制转为小写
   - 移除 EncodeContext 重建逻辑（v2 不让，那就算了）
-  - 字段级 `omitempty`、`truncate` 和 `minsize` 标记被静默忽略（v2 让传递变得不可能；如有需要请自行实现 MarshalBSON）
+	- 字段级 `omitempty`、`truncate` 和 `minsize` 标记在当前字段上生效，但不会传递到嵌套 struct 字段（v2 让传递变得不可能）
   - 无循环引用检测（与上游行为一致；别让你的结构体引用自己，谢谢）
 
 这个文件存在的原因很简单：v2 认为你的字段名该怎么写轮不到你说了算。
