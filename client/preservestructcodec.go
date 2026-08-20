@@ -275,6 +275,7 @@ type PreserveStructCodec struct {
 	OmitZeroStruct          bool
 	ZeroStructs             bool
 	IntMinSize              bool
+	AllowTruncatingDoubles  bool
 }
 
 var (
@@ -340,6 +341,7 @@ func NewPreserveStructCodec(bsonOpts *options.BSONOptions) *PreserveStructCodec 
 		structCodec.ErrorOnInlineDuplicates = bsonOpts.ErrorOnInlineDuplicates
 		structCodec.UseJSONStructTags = bsonOpts.UseJSONStructTags
 		structCodec.IntMinSize = bsonOpts.IntMinSize
+		structCodec.AllowTruncatingDoubles = bsonOpts.AllowTruncatingDoubles
 	}
 
 	return structCodec
@@ -462,6 +464,105 @@ func newDecodeError(key string, original error) error {
 
 	de.keys = append(de.keys, key)
 	return de
+}
+
+func shouldTruncateDoubles(dc bson.DecodeContext, vr bson.ValueReader, val reflect.Value, allowTruncatingDoubles bool) (err error, processed bool) {
+	if !allowTruncatingDoubles || vr.Type() != bson.TypeDouble {
+		return nil, false
+	}
+	switch val.Type().Kind() {
+	case reflect.Float32,
+		reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64, reflect.Int,
+		reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64, reflect.Uint:
+	default:
+		return nil, false
+	}
+
+	f64, err := vr.ReadDouble()
+	if err != nil {
+		return err, true
+	}
+
+	switch val.Type().Kind() {
+	case reflect.Float32:
+		val.SetFloat(f64)
+		return nil, true
+	}
+
+	if f64 > float64(math.MaxInt64) {
+		return fmt.Errorf("%g overflows int64", f64), true
+	}
+
+	i64 := int64(f64)
+	switch val.Type().Kind() {
+	case reflect.Int8:
+		if i64 < math.MinInt8 || i64 > math.MaxInt8 {
+			return fmt.Errorf("%d overflows int8", i64), true
+		}
+		val.SetInt(i64)
+		return nil, true
+	case reflect.Int16:
+		if i64 < math.MinInt16 || i64 > math.MaxInt16 {
+			return fmt.Errorf("%d overflows int16", i64), true
+		}
+		val.SetInt(i64)
+		return nil, true
+	case reflect.Int32:
+		if i64 < math.MinInt32 || i64 > math.MaxInt32 {
+			return fmt.Errorf("%d overflows int32", i64), true
+		}
+		val.SetInt(i64)
+		return nil, true
+	case reflect.Int64:
+		val.SetInt(i64)
+		return nil, true
+	case reflect.Int:
+		if i64 > math.MaxInt { // Can we fit this inside of an int
+			return fmt.Errorf("%d overflows int", i64), true
+		}
+		val.SetInt(i64)
+		return nil, true
+	}
+
+	ui64 := uint64(f64)
+	switch val.Type().Kind() {
+	case reflect.Uint8:
+		if i64 < 0 || i64 > math.MaxUint8 {
+			return fmt.Errorf("%d overflows uint8", i64), true
+		}
+		val.SetUint(ui64)
+		return nil, true
+	case reflect.Uint16:
+		if i64 < 0 || i64 > math.MaxUint16 {
+			return fmt.Errorf("%d overflows uint16", i64), true
+		}
+		val.SetUint(ui64)
+		return nil, true
+	case reflect.Uint32:
+		if i64 < 0 || i64 > math.MaxUint32 {
+			return fmt.Errorf("%d overflows uint32", i64), true
+		}
+		val.SetUint(ui64)
+		return nil, true
+	case reflect.Uint64:
+		if i64 < 0 {
+			return fmt.Errorf("%d overflows uint64", i64), true
+		}
+		val.SetUint(ui64)
+		return nil, true
+	case reflect.Uint:
+		if i64 < 0 {
+			return fmt.Errorf("%d overflows uint", i64), true
+		}
+		v := uint64(i64)
+		if v > math.MaxUint { // Can we fit this inside of an uint
+			return fmt.Errorf("%d overflows uint", i64), true
+		}
+		val.SetUint(ui64)
+		return nil, true
+	}
+
+	return nil, false
 }
 
 // DecodeValue implements the Codec interface.
@@ -593,6 +694,15 @@ func (sc *PreserveStructCodec) DecodeValue(dc bson.DecodeContext, vr bson.ValueR
 		field = field.Addr()
 
 		dctx := dc
+
+		err, processed := shouldTruncateDoubles(dctx, vr, field.Elem(), sc.AllowTruncatingDoubles || fd.truncate)
+		if processed {
+			if err != nil {
+				return err
+			}
+
+			continue
+		}
 
 		if fd.decoder == nil {
 			return newDecodeError(fd.name, errNoDecoder{Type: field.Elem().Type()})
