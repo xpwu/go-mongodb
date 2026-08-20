@@ -139,7 +139,7 @@ func TestNewStructFieldBuilder_DefaultOpts(t *testing.T) {
 }
 
 func TestNewStructFieldBuilder_WithOpts(t *testing.T) {
-	b := NewStructFieldBuilder(xopt.WithPreserveField(true))
+	b := NewStructFieldBuilder(xopt.WithPreserveField())
 	if b == nil {
 		t.Fatal("NewStructFieldBuilder with opts: returned nil")
 	}

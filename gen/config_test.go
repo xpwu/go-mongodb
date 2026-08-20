@@ -23,9 +23,6 @@ func TestNewConfig_Defaults(t *testing.T) {
 	if c.UseJSONTags != false {
 		t.Errorf("UseJSONTags default = %v, want false", c.UseJSONTags)
 	}
-	if c.IgnoreTagErr != false {
-		t.Errorf("IgnoreTagErr default = %v, want false", c.IgnoreTagErr)
-	}
 	if c.Dir != "" {
 		t.Errorf("Dir default = %q, want empty", c.Dir)
 	}
@@ -188,7 +185,6 @@ func TestConfig_FieldAssignment(t *testing.T) {
 	c := NewConfig()
 	c.PreserveField = true
 	c.UseJSONTags = true
-	c.IgnoreTagErr = true
 	c.Dir = "./zgen"
 	c.Pkg = "mypkg"
 
@@ -197,9 +193,6 @@ func TestConfig_FieldAssignment(t *testing.T) {
 	}
 	if !c.UseJSONTags {
 		t.Error("UseJSONTags should be true")
-	}
-	if !c.IgnoreTagErr {
-		t.Error("IgnoreTagErr should be true")
 	}
 	if c.Dir != "./zgen" {
 		t.Errorf("Dir = %q", c.Dir)

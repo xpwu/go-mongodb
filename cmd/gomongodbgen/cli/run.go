@@ -43,7 +43,6 @@ func NewBuildConfig(opts ...xopt.Option) *BuildConfig {
 		o(applied)
 	}
 	c.PreserveField = applied.PreserveField
-	c.IgnoreTagErr = applied.IgnoreTagErr
 	if applied.BsonOpts != nil {
 		c.UseJSONTags = applied.BsonOpts.UseJSONStructTags
 	}
@@ -165,10 +164,7 @@ func RunFromArgs(b *BuildConfig) {
 		"equivalent to xopt.WithBsonOptions(&mongo/options.BSONOptions{UseJSONStructTags: true}).\n"+
 			"MUST match the xopt.Options used in your go-mongodb/client code.")
 	preserveField := fs.Bool("xopt.with-preserve-field", b.config.PreserveField,
-		"equivalent to xopt.WithPreserveField(false).\n"+
-			"MUST match the xopt.Options used in your go-mongodb/client code.")
-	preserveFieldIgnoreTagErr := fs.Bool("xopt.with-preserve-field-ignore-tag-err", b.config.IgnoreTagErr,
-		"equivalent to xopt.WithPreserveField(true).\n"+
+		"equivalent to xopt.WithPreserveField().\n"+
 			"MUST match the xopt.Options used in your go-mongodb/client code.")
 
 	if err := fs.Parse(os.Args[1:]); err != nil {
@@ -180,8 +176,7 @@ func RunFromArgs(b *BuildConfig) {
 	b.outDirRaw = *dir
 	b.config.Pkg = *pkg
 	b.config.UseJSONTags = *useJSONTags
-	b.config.PreserveField = *preserveField || *preserveFieldIgnoreTagErr
-	b.config.IgnoreTagErr = *preserveFieldIgnoreTagErr
+	b.config.PreserveField = *preserveField
 
 	// -add-map 追加（key 相同覆盖）
 	for _, raw := range mapFlags {

@@ -9,7 +9,6 @@ type Opts struct {
 	BsonOpts      *options.BSONOptions
 	Registry      *bson.Registry
 	PreserveField bool
-	IgnoreTagErr  bool
 }
 
 type Option func(opt *Opts)
@@ -26,11 +25,9 @@ func WithRegistry(registry *bson.Registry) Option {
 	}
 }
 
-// WithPreserveField ignoreTagErr 忽略 minsize & truncate & omitempty tag的报错
-func WithPreserveField(ignoreTagErr bool) Option {
+func WithPreserveField() Option {
 	return func(opt *Opts) {
 		opt.PreserveField = true
-		opt.IgnoreTagErr = ignoreTagErr
 	}
 }
 
@@ -39,6 +36,5 @@ func GetDefaultOpts() *Opts {
 		BsonOpts:      nil,
 		Registry:      nil,
 		PreserveField: false,
-		IgnoreTagErr:  false,
 	}
 }

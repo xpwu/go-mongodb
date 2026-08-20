@@ -20,7 +20,6 @@ type Config struct {
 	Maps          map[string]MapEntry
 	PreserveField bool
 	UseJSONTags   bool
-	IgnoreTagErr  bool
 	Dir           string
 	Pkg           string
 }

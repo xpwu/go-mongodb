@@ -109,36 +109,27 @@ func TestXopt_GetDefaultOpts(t *testing.T) {
 	if opts.PreserveField {
 		t.Errorf("Default PreserveField: expected false, got true")
 	}
-	if opts.IgnoreTagErr {
-		t.Errorf("Default IgnoreTagErr: expected false, got true")
-	}
 }
 
 func TestXopt_WithPreserveField_True(t *testing.T) {
 	opts := xopt.GetDefaultOpts()
 
-	optFunc := xopt.WithPreserveField(true)
+	optFunc := xopt.WithPreserveField()
 	optFunc(opts)
 
 	if !opts.PreserveField {
 		t.Errorf("WithPreserveField(true): expected PreserveField=true, got false")
-	}
-	if !opts.IgnoreTagErr {
-		t.Errorf("WithPreserveField(true): expected IgnoreTagErr=true, got false")
 	}
 }
 
 func TestXopt_WithPreserveField_False(t *testing.T) {
 	opts := xopt.GetDefaultOpts()
 
-	optFunc := xopt.WithPreserveField(false)
+	optFunc := xopt.WithPreserveField()
 	optFunc(opts)
 
 	if !opts.PreserveField {
 		t.Errorf("WithPreserveField(false): expected PreserveField=true, got false")
-	}
-	if opts.IgnoreTagErr {
-		t.Errorf("WithPreserveField(false): expected IgnoreTagErr=false, got true")
 	}
 }
 
@@ -172,7 +163,7 @@ func TestXopt_ChainOptions(t *testing.T) {
 	bsonOpts := &options.BSONOptions{}
 	registry := bson.NewRegistry()
 
-	xopt.WithPreserveField(true)(opts)
+	xopt.WithPreserveField()(opts)
 	xopt.WithBsonOptions(bsonOpts)(opts)
 	xopt.WithRegistry(registry)(opts)
 

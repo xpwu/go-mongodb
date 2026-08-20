@@ -2,7 +2,6 @@ package fields
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"github.com/xpwu/go-mongodb/field"
 	"github.com/xpwu/go-mongodb/filter"
@@ -104,7 +103,6 @@ type StructFieldBuilder struct {
 type builderOption struct {
 	useJSONStructTags bool
 	preserveField     bool
-	ignoreTagErr      bool
 
 	dir       string
 	targetPkg string
@@ -118,7 +116,6 @@ func NewStructFieldBuilder(opts ...xopt.Option) *StructFieldBuilder {
 	op := &builderOption{
 		useJSONStructTags: false,
 		preserveField:     xop.PreserveField,
-		ignoreTagErr:      xop.IgnoreTagErr,
 	}
 	if xop.BsonOpts != nil {
 		op.useJSONStructTags = xop.BsonOpts.UseJSONStructTags
@@ -879,18 +876,6 @@ func (b *StructFieldBuilder) buildStruct(t reflect.Type) (ft TypeInfo, ok bool) 
 		tag, _ := x.ParseStruct(f, !b.opt.preserveField, b.opt.useJSONStructTags)
 		if tag.Skip {
 			continue
-		}
-		if b.opt.preserveField && (tag.OmitEmpty || tag.MinSize || tag.Truncate) && !b.opt.ignoreTagErr {
-			if !b.opt.ignoreTagErr {
-				panic(errors.New(fmt.Sprintf(
-					"NOT supported tag: minsize & truncate & omitempty are used in %s.%s.%s. \n"+
-						"Using IgnoreTagErr() can ignore the error",
-					t.PkgPath(), t.Name(), f.Name)))
-			} else {
-				println(fmt.Sprintf(
-					"NOT supported tag: minsize & truncate & omitempty are used in %s.%s.%s.",
-					t.PkgPath(), t.Name(), f.Name))
-			}
 		}
 		fd := Field{}
 		fd.MethodName = f.Name

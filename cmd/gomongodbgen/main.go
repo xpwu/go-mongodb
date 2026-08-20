@@ -20,7 +20,6 @@ import (
 //   - -add-map ...       自定义类型映射（可重复）
 //   - -xopt.with-preserve-field
 //   - -xopt.with-bson-options-use-json-tags
-//   - -xopt.with-preserve-field-ignore-tag-err
 //
 // 详细文档见 README 和 ./cli 包。
 func main() {

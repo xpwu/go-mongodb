@@ -510,18 +510,6 @@ func (g *Generator) buildStruct(ts TypeSource) (TypeInfo, bool) {
 		if tag == nil || tag.Skip {
 			continue
 		}
-		if g.config.PreserveField && (tag.OmitEmpty || tag.MinSize || tag.Truncate) && !g.config.IgnoreTagErr {
-			if !g.config.IgnoreTagErr {
-				panic(fmt.Errorf(
-					"NOT supported tag: minsize & truncate & omitempty are used in %s.%s.%s. \n"+
-						"Using IgnoreTagErr() can ignore the error",
-					ts.PkgPath(), ts.Name(), fs.Name()))
-			} else {
-				println(fmt.Sprintf(
-					"NOT supported tag: minsize & truncate & omitempty are used in %s.%s.%s.",
-					ts.PkgPath(), ts.Name(), fs.Name()))
-			}
-		}
 
 		fd := templateField{}
 		fd.MethodName = fs.Name()
