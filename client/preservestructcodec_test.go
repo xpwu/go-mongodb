@@ -3,9 +3,11 @@ package client
 import (
 	"bytes"
 	"github.com/xpwu/go-mongodb/x"
+	"math"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
@@ -1995,131 +1997,6 @@ func TestPreserveStructCodec_MinSize_ControlGroup(t *testing.T) {
 	}
 }
 
-// === truncate 组 ===
-
-func TestPreserveStructCodec_Truncate_Float64(t *testing.T) {
-	r := GetPreserveFieldRegistry(nil)
-
-	type Doc struct {
-		Value float64 `bson:"Value,truncate"`
-	}
-
-	d := Doc{Value: 3.99}
-
-	raw, err := encodeRaw(r, d)
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
-
-	var result bson.M
-	if err := bsonUnmarshal(raw, &result); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	val := result["Value"]
-	t.Logf("truncate float64(3.99) encoded as: %v (type: %T)", val, val)
-
-	switch v := val.(type) {
-	case float64:
-		if v == 3.99 {
-			t.Log("❌ truncate NOT working: float64(3.99) → float64 (no truncation)")
-		} else {
-			t.Logf("❓ truncate: got float64 but value changed to %v", v)
-		}
-	case float32:
-		t.Log("✅ truncate IS working: float64 → float32")
-	default:
-		t.Logf("❓ truncate: encoded as unexpected type %T", val)
-	}
-}
-
-func TestPreserveStructCodec_Truncate_Float32(t *testing.T) {
-	r := GetPreserveFieldRegistry(nil)
-
-	type Doc struct {
-		Value float32 `bson:"Value,truncate"`
-	}
-
-	d := Doc{Value: 7.77}
-
-	raw, err := encodeRaw(r, d)
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
-
-	var result bson.M
-	if err := bsonUnmarshal(raw, &result); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	val := result["Value"]
-	t.Logf("truncate float32(7.77) encoded as: %v (type: %T)", val, val)
-
-	if _, ok := val.(float32); ok {
-		t.Log("✅ truncate: float32 preserved as float32")
-	} else {
-		t.Logf("❓ truncate: float32 encoded as %T", val)
-	}
-}
-
-func TestPreserveStructCodec_Truncate_NegativeFloat(t *testing.T) {
-	r := GetPreserveFieldRegistry(nil)
-
-	type Doc struct {
-		Value float64 `bson:"Value,truncate"`
-	}
-
-	d := Doc{Value: -2.99}
-
-	raw, err := encodeRaw(r, d)
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
-
-	var result bson.M
-	if err := bsonUnmarshal(raw, &result); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	val := result["Value"]
-	t.Logf("truncate float64(-2.99) encoded as: %v (type: %T)", val, val)
-
-	switch val.(type) {
-	case float32:
-		t.Log("✅ truncate IS working: negative float64 → float32")
-	case float64:
-		t.Log("❌ truncate NOT working: negative float64 remains float64")
-	default:
-		t.Logf("❓ truncate: encoded as unexpected type %T", val)
-	}
-}
-
-func TestPreserveStructCodec_Truncate_ControlGroup(t *testing.T) {
-	r := GetPreserveFieldRegistry(nil)
-
-	type Doc struct {
-		Value float64 // 无 truncate tag
-	}
-
-	d := Doc{Value: 3.99}
-
-	raw, err := encodeRaw(r, d)
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
-
-	var result bson.M
-	if err := bsonUnmarshal(raw, &result); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	val := result["Value"]
-
-	if _, ok := val.(float64); !ok {
-		t.Errorf("Control group wrong: expected float64, got %T", val)
-	}
-}
-
 // === 组合测试 ===
 
 func TestPreserveStructCodec_OmitEmpty_And_MinSize(t *testing.T) {
@@ -2157,47 +2034,6 @@ func TestPreserveStructCodec_OmitEmpty_And_MinSize(t *testing.T) {
 	if err := bsonUnmarshal(raw2, &result2); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
-}
-
-func TestPreserveStructCodec_OmitEmpty_And_Truncate(t *testing.T) {
-	r := GetPreserveFieldRegistry(nil)
-
-	type Doc struct {
-		A float64 `bson:"A,omitempty,truncate"`
-		B float64 `bson:"B,omitempty,truncate"`
-	}
-
-	d := Doc{} // A=0, B=0
-
-	raw, err := encodeRaw(r, d)
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
-
-	var result bson.M
-	if err := bsonUnmarshal(raw, &result); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	if len(result) == 0 {
-		t.Log("✅ omitempty+truncate: both zero fields omitted")
-	} else {
-		t.Logf("❌ omitempty+truncate: got %v", result)
-	}
-
-	// 非零值
-	d2 := Doc{A: 3.99}
-	raw2, err := encodeRaw(r, d2)
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
-
-	var result2 bson.M
-	if err := bsonUnmarshal(raw2, &result2); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	t.Logf("omitempty+truncate non-zero: A=3.99 encoded as %v (type %T)", result2["A"], result2["A"])
 }
 
 // === ParseStructTags 解析验证 ===
@@ -2411,83 +2247,9 @@ func TestPreserveStructCodec_GlobalIntMinSize_Uint64Small(t *testing.T) {
 	}
 }
 
-func TestPreserveStructCodec_GlobalTruncate_NotSupported(t *testing.T) {
-	// options.BSONOptions 没有 Truncate 字段，全局 truncate 无法设置
-	// tag 里的 truncate 也被 codec 忽略
-	r := GetPreserveFieldRegistry(nil)
-
-	type Doc struct {
-		Value float64 `bson:"Value,truncate"`
-	}
-
-	d := Doc{Value: 3.99}
-
-	raw, err := encodeRaw(r, d)
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
-
-	var result bson.M
-	if err := bsonUnmarshal(raw, &result); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	val := result["Value"]
-	t.Logf("truncate with tag only: %v (type: %T)", val, val)
-
-	if v, ok := val.(float64); ok && v == 3.99 {
-		t.Log("✅ confirmed: truncate is NOT supported (float64 unchanged)")
-	}
-}
-
 // ─────────────────────────────────────────────
 // 18. omitempty / minsize 传递性测试
 // ─────────────────────────────────────────────
-
-// ─────────────────────────────────────────────
-// minsize 传递性差异记录
-// 官方 driver：外层字段的 minsize 会传递给内层 struct 的所有 int 字段
-// 本 codec：minsize 只在当前字段生效，不传递给内层 struct 的字段
-// ─────────────────────────────────────────────
-
-func TestPreserveStructCodec_MinSize_NoTransitivity_InnerHasNoTag(t *testing.T) {
-	// 验证：外层有 minsize，内层字段【没有】minsize tag → 内层保持 int64
-	r := GetPreserveFieldRegistry(nil)
-
-	type Inner struct {
-		Value int64 // 没有 minsize tag
-	}
-	type Doc struct {
-		Inner Inner `bson:",minsize"` // 外层有 minsize
-		Count int64 `bson:",minsize"`
-	}
-
-	d := Doc{Inner: Inner{Value: 42}, Count: 100}
-
-	raw, err := encodeRaw(r, d)
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
-
-	var result bson.M
-	if err := bsonUnmarshal(raw, &result); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	// Count 自己有 tag → int32
-	count := result["Count"]
-	if _, ok := count.(int32); !ok {
-		t.Errorf("Count should be int32 (own tag), got %T", count)
-	}
-
-	// Inner.Value 没有 tag → 保持 int64（没有传递性）
-	inner := result["Inner"].(bson.M)
-	innerVal := inner["Value"]
-	if _, ok := innerVal.(int64); !ok {
-		t.Errorf("Inner.Value should be int64 (no transitivity), got %T", innerVal)
-	}
-	t.Log("✅ confirmed: minsize has NO transitivity in this codec")
-}
 
 func TestPreserveStructCodec_MinSize_InnerTagWorksIndependently(t *testing.T) {
 	// 验证：内层字段自己有 minsize tag → 独立生效（这不是传递性）
@@ -2517,60 +2279,6 @@ func TestPreserveStructCodec_MinSize_InnerTagWorksIndependently(t *testing.T) {
 	if _, ok := innerVal.(int32); !ok {
 		t.Errorf("Inner.Value should be int32 (own tag), got %T", innerVal)
 	}
-	t.Log("✅ confirmed: inner field minsize works when it has its own tag")
-}
-
-// ─────────────────────────────────────────────
-// omitempty 传递性差异记录
-// 官方 driver：外层 omitempty 会传递给内层 struct 的所有字段
-// 本 codec：omitempty 只在当前字段生效，不传递
-// ─────────────────────────────────────────────
-
-func TestPreserveStructCodec_OmitEmpty_NoTransitivity_InnerHasNoTag(t *testing.T) {
-	r := GetPreserveFieldRegistry(nil)
-
-	type Inner struct {
-		Value int    // 没有 omitempty
-		Name  string // 没有 omitempty
-	}
-	type Doc struct {
-		Inner Inner `bson:",omitempty"`
-		Age   int   `bson:",omitempty"`
-	}
-
-	d := Doc{Inner: Inner{Value: 42}, Age: 0}
-
-	raw, err := encodeRaw(r, d)
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
-
-	var result bson.M
-	if err := bsonUnmarshal(raw, &result); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	// Age 被省略（自己有 omitempty）
-	if _, ok := result["Age"]; ok {
-		t.Errorf("Age should be omitted, got %v", result["Age"])
-	}
-
-	// Inner 存在
-	inner, ok := result["Inner"].(bson.M)
-	if !ok {
-		t.Fatalf("Inner should exist, got %T", result["Inner"])
-	}
-
-	// Inner.Value 存在（非零）
-	if inner["Value"] != int32(42) {
-		t.Errorf("Inner.Value: got %v, want 42", inner["Value"])
-	}
-
-	// Inner.Name 被编码为空字符串（没有 omitempty tag，不传递）
-	if inner["Name"] != "" {
-		t.Errorf("Inner.Name should be empty string (no omitempty tag), got %v", inner["Name"])
-	}
-	t.Log("✅ confirmed: omitempty has NO transitivity in this codec")
 }
 
 func TestPreserveStructCodec_OmitEmpty_InnerTagWorksIndependently(t *testing.T) {
@@ -2599,42 +2307,6 @@ func TestPreserveStructCodec_OmitEmpty_InnerTagWorksIndependently(t *testing.T) 
 	inner := result["Inner"].(bson.M)
 	if _, ok := inner["Name"]; ok {
 		t.Errorf("Inner.Name should be omitted (own omitempty tag), got %v", inner["Name"])
-	}
-	t.Log("✅ confirmed: inner field omitempty works when it has its own tag")
-}
-
-func TestPreserveStructCodec_Truncate_Nested_NotSupported(t *testing.T) {
-	r := GetPreserveFieldRegistry(nil)
-
-	type Inner struct {
-		Value float64 `bson:"Value,truncate"`
-	}
-	type Doc struct {
-		Inner Inner
-	}
-
-	d := Doc{Inner: Inner{Value: 3.99}}
-
-	raw, err := encodeRaw(r, d)
-	if err != nil {
-		t.Fatalf("encode failed: %v", err)
-	}
-
-	var result bson.M
-	if err := bsonUnmarshal(raw, &result); err != nil {
-		t.Fatalf("unmarshal failed: %v", err)
-	}
-
-	inner, ok := result["Inner"].(bson.M)
-	if !ok {
-		t.Fatalf("Inner should exist, got %T", result["Inner"])
-	}
-
-	val := inner["Value"]
-	t.Logf("nested truncate: %v (type: %T)", val, val)
-
-	if v, ok := val.(float64); ok && v == 3.99 {
-		t.Log("✅ confirmed: nested truncate is NOT supported (float64 unchanged)")
 	}
 }
 
@@ -2844,5 +2516,1490 @@ func TestPreserveStructCodec_OmitEmpty_Tag_Scalar_NonZeroKept(t *testing.T) {
 	tags, ok := result["Tags"].(bson.A)
 	if !ok || len(tags) != 1 || tags[0] != "go" {
 		t.Errorf("Tags should be present, got %v", result["Tags"])
+	}
+}
+
+func TestPreserveStructCodec_Truncate_Tag_DoubleToInt(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value int `bson:",truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": 3.99})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	// 3.99 截断为 3
+	if decoded.Value != 3 {
+		t.Errorf("Value: got %d, want 3 (truncated from 3.99)", decoded.Value)
+	}
+}
+
+func TestPreserveStructCodec_Truncate_Tag_DoubleToInt64(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value int64 `bson:"Value,truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": 42.7})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if decoded.Value != 42 {
+		t.Errorf("Value: got %d, want 42 (truncated from 42.7)", decoded.Value)
+	}
+}
+
+func TestPreserveStructCodec_Truncate_Tag_DoubleToUint(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value uint `bson:"Value,truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": 100.4})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if decoded.Value != 100 {
+		t.Errorf("Value: got %d, want 100 (truncated from 100.4)", decoded.Value)
+	}
+}
+
+func TestPreserveStructCodec_Truncate_Tag_DoubleToFloat32(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value float32 `bson:"Value,truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": 3.14159})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	// float32 精度截断
+	if math.Abs(float64(decoded.Value)-3.14159) > 0.00001 {
+		t.Errorf("Value: got %f, want ~3.14159 (float32 precision)", decoded.Value)
+	}
+}
+
+func TestPreserveStructCodec_Truncate_NoTag_DoubleToInt_Error(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value int // 没有 truncate tag
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": 3.99})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	err = decodeRaw(r, raw, &decoded)
+	if err == nil {
+		t.Error("expected error decoding double into int without truncate tag, got nil")
+	}
+}
+
+func TestPreserveStructCodec_Truncate_Global_AllowTruncatingDoubles(t *testing.T) {
+	opts := &options.BSONOptions{AllowTruncatingDoubles: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		A int
+		B int64
+		C uint
+	}
+
+	raw, err := encodeRaw(r, bson.M{"A": 1.9, "B": 2.1, "C": 3.7})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if decoded.A != 1 || decoded.B != 2 || decoded.C != 3 {
+		t.Errorf("A=%d, B=%d, C=%d, want 1, 2, 3", decoded.A, decoded.B, decoded.C)
+	}
+}
+
+func TestPreserveStructCodec_Truncate_And_OmitEmpty(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value int `bson:",omitempty,truncate"`
+	}
+
+	// 零值 BSON double 0.0 → 截断为 0 → omitempty 判断为零 → 省略
+	raw, err := encodeRaw(r, bson.M{"Value": 0.0})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+}
+
+// ─────────────────────────────────────────────
+// omitempty minsize truncate 传递性差异记录
+// 官方 driver：外层这三个属性 会传递给内层 struct 的所有字段
+// 本 codec：这三个属性 只在当前字段生效，不传递
+// ─────────────────────────────────────────────
+
+func TestPreserveStructCodec_Truncate_NoTransitivity_InnerHasNoTag(t *testing.T) {
+	// 验证：外层字段 truncate 不传递给内层
+	r := GetPreserveFieldRegistry(nil)
+
+	type Inner struct {
+		Value int // 没有 truncate tag
+	}
+	type Doc struct {
+		Inner Inner `bson:",truncate"` // 外层有 truncate
+		A     int   `bson:",truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{
+		"Inner": bson.M{"Value": 5.9},
+		"A":     2.3,
+	})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err == nil {
+		t.Errorf("truncate should Not has transitivity, Inner.Value=%d", decoded.Inner.Value)
+	}
+	t.Logf("✅ confirmed: truncate has NO transitivity in this codec")
+}
+
+func TestPreserveStructCodec_OmitEmpty_NoTransitivity_InnerHasNoTag(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Inner struct {
+		Value int    // 没有 omitempty
+		Name  string // 没有 omitempty
+	}
+	type Doc struct {
+		Inner Inner `bson:",omitempty"`
+		Age   int   `bson:",omitempty"`
+	}
+
+	d := Doc{Inner: Inner{Value: 42}, Age: 0}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	// Age 被省略（自己有 omitempty）
+	if _, ok := result["Age"]; ok {
+		t.Errorf("Age should be omitted, got %v", result["Age"])
+	}
+
+	// Inner 存在
+	inner, ok := result["Inner"].(bson.M)
+	if !ok {
+		t.Fatalf("Inner should exist, got %T", result["Inner"])
+	}
+
+	// Inner.Value 存在（非零）
+	if inner["Value"] != int32(42) {
+		t.Errorf("Inner.Value: got %v, want 42", inner["Value"])
+	}
+
+	// Inner.Name 被编码为空字符串（没有 omitempty tag，不传递）
+	if inner["Name"] != "" {
+		t.Errorf("Inner.Name should be empty string (no omitempty tag), got %v", inner["Name"])
+	}
+	t.Log("✅ confirmed: omitempty has NO transitivity in this codec")
+}
+
+func TestPreserveStructCodec_MinSize_NoTransitivity_InnerHasNoTag(t *testing.T) {
+	// 验证：外层有 minsize，内层字段【没有】minsize tag → 内层保持 int64
+	r := GetPreserveFieldRegistry(nil)
+
+	type Inner struct {
+		Value int64 // 没有 minsize tag
+	}
+	type Doc struct {
+		Inner Inner `bson:",minsize"` // 外层有 minsize
+		Count int64 `bson:",minsize"`
+	}
+
+	d := Doc{Inner: Inner{Value: 42}, Count: 100}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	// Count 自己有 tag → int32
+	count := result["Count"]
+	if _, ok := count.(int32); !ok {
+		t.Errorf("Count should be int32 (own tag), got %T", count)
+	}
+
+	// Inner.Value 没有 tag → 保持 int64（没有传递性）
+	inner := result["Inner"].(bson.M)
+	innerVal := inner["Value"]
+	if _, ok := innerVal.(int64); !ok {
+		t.Errorf("Inner.Value should be int64 (no transitivity), got %T", innerVal)
+	}
+	t.Log("✅ confirmed: minsize has NO transitivity in this codec")
+}
+
+// ─────────────────────────────────────────────
+// 19. 全局 + Tag 组合覆盖补充
+// ─────────────────────────────────────────────
+
+// --- omitempty 组合 ---
+
+func TestPreserveStructCodec_OmitEmpty_GlobalAndTag_BothZero(t *testing.T) {
+	// 全局 OmitEmpty + tag omitempty，零值 → 省略
+	opts := &options.BSONOptions{OmitEmpty: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		A string `bson:",omitempty"` // 有 tag
+		B int    // 无 tag，靠全局
+	}
+
+	d := Doc{} // A="", B=0
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if _, ok := result["A"]; ok {
+		t.Errorf("A should be omitted (tag omitempty), got %v", result["A"])
+	}
+	if _, ok := result["B"]; ok {
+		t.Errorf("B should be omitted (global OmitEmpty), got %v", result["B"])
+	}
+}
+
+func TestPreserveStructCodec_OmitEmpty_Global_NonZeroKept(t *testing.T) {
+	// 全局 OmitEmpty，非零值字段不应被省略
+	opts := &options.BSONOptions{OmitEmpty: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		Name   string
+		Age    int
+		Score  float64
+		Active bool
+	}
+
+	d := Doc{Name: "Alice", Age: 30, Score: 1.5, Active: true}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if result["Name"] != "Alice" {
+		t.Errorf("Name should be present, got %v", result["Name"])
+	}
+	if result["Age"] != int32(30) {
+		t.Errorf("Age should be present, got %v", result["Age"])
+	}
+	if result["Score"] != 1.5 {
+		t.Errorf("Score should be present, got %v", result["Score"])
+	}
+	if result["Active"] != true {
+		t.Errorf("Active should be present, got %v", result["Active"])
+	}
+}
+
+// --- minsize 组合 ---
+
+func TestPreserveStructCodec_MinSize_GlobalAndTag_BothPresent(t *testing.T) {
+	// 全局 IntMinSize=true + tag minsize，小值 → int32（OR 关系，两者任一为 true 即可）
+	opts := &options.BSONOptions{IntMinSize: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		A int64 `bson:",minsize"` // tag + 全局
+		B int64 // 只有全局
+	}
+
+	d := Doc{A: 42, B: 100}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if _, ok := result["A"].(int32); !ok {
+		t.Errorf("A should be int32 (tag+global), got %T", result["A"])
+	}
+	if _, ok := result["B"].(int32); !ok {
+		t.Errorf("B should be int32 (global only), got %T", result["B"])
+	}
+}
+
+func TestPreserveStructCodec_MinSize_Global_LargeUint64_WithinInt64(t *testing.T) {
+	// 全局 IntMinSize，uint64 大值但在 int64 范围内 → int64
+	opts := &options.BSONOptions{IntMinSize: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		Value uint64
+	}
+
+	d := Doc{Value: 1 << 40} // > MaxInt32, < MaxInt64
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	val := result["Value"]
+	if _, ok := val.(int64); !ok {
+		t.Errorf("uint64 large value should be int64, got %T", val)
+	}
+}
+
+func TestPreserveStructCodec_Truncate_Tag_DoubleToFloat64(t *testing.T) {
+	// truncate tag 对 float64 目标字段——不应该截断，直接赋值
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value float64 `bson:",truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": 3.14159})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	// float64 → float64，truncate 不改变精度
+	if decoded.Value != 3.14159 {
+		t.Errorf("Value: got %f, want 3.14159", decoded.Value)
+	}
+}
+
+func TestPreserveStructCodec_Truncate_Tag_NegativeDoubleToInt(t *testing.T) {
+	// 负数 double → int（有 truncate tag）
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value int `bson:",truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": -3.7})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	// -3.7 截断为 -3
+	if decoded.Value != -3 {
+		t.Errorf("Value: got %d, want -3 (truncated from -3.7)", decoded.Value)
+	}
+}
+
+func TestPreserveStructCodec_Truncate_Global_NoTag_Works(t *testing.T) {
+	// 全局 AllowTruncatingDoubles，字段没有 truncate tag → 也应该截断
+	opts := &options.BSONOptions{AllowTruncatingDoubles: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		A int // 没有 truncate tag
+		B int64
+	}
+
+	raw, err := encodeRaw(r, bson.M{"A": 5.6, "B": 9.1})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if decoded.A != 5 {
+		t.Errorf("A: got %d, want 5 (global truncate), got %v", decoded.A, decoded.A)
+	}
+	if decoded.B != 9 {
+		t.Errorf("B: got %d, want 9 (global truncate)", decoded.B)
+	}
+}
+
+// --- omitempty + minsize 全局同时开启 ---
+
+func TestPreserveStructCodec_Global_OmitEmptyAndMinSize_Combined(t *testing.T) {
+	// 同时开启 OmitEmpty + IntMinSize
+	opts := &options.BSONOptions{
+		OmitEmpty:  true,
+		IntMinSize: true,
+	}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		Name  string
+		Age   int
+		Count int64
+		Total uint64
+	}
+
+	d := Doc{Name: "Alice", Age: 0, Count: 42, Total: 100}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	// Name 非零 → 保留
+	if result["Name"] != "Alice" {
+		t.Errorf("Name should be present, got %v", result["Name"])
+	}
+
+	// Age 零值 → 省略（全局 OmitEmpty）
+	if _, ok := result["Age"]; ok {
+		t.Errorf("Age should be omitted, got %v", result["Age"])
+	}
+
+	// Count 非零 + minsize → int32
+	if _, ok := result["Count"].(int32); !ok {
+		t.Errorf("Count should be int32 (minsize), got %T", result["Count"])
+	}
+
+	// Total 非零 + minsize → int32
+	if _, ok := result["Total"].(int32); !ok {
+		t.Errorf("Total should be int32 (minsize), got %T", result["Total"])
+	}
+}
+
+// --- OmitZeroStruct 全局（无 tag）---
+
+func TestPreserveStructCodec_OmitZeroStruct_Global_NoTag(t *testing.T) {
+	// 全局 OmitZeroStruct=true，struct 字段没有 omitempty tag
+	opts := &options.BSONOptions{OmitZeroStruct: true, OmitEmpty: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Inner struct {
+		Value int
+	}
+	type Doc struct {
+		Name  string
+		Inner Inner // 没有 omitempty tag
+	}
+
+	d := Doc{Name: "Alice"} // Inner 是零值
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if result["Name"] != "Alice" {
+		t.Errorf("Name should be present, got %v", result["Name"])
+	}
+
+	// Inner 是零值 struct，OmitZeroStruct=true → 应该被省略
+	if _, ok := result["Inner"]; ok {
+		t.Errorf("Inner should be omitted (global OmitZeroStruct), got %v", result["Inner"])
+	}
+}
+
+func TestPreserveStructCodec_OmitZeroStruct_GlobalAndOmitEmpty_Combined(t *testing.T) {
+	// 同时开启 OmitZeroStruct + 全局 OmitEmpty
+	opts := &options.BSONOptions{
+		OmitZeroStruct: true,
+		OmitEmpty:      true,
+	}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Inner struct {
+		Value int
+	}
+	type Doc struct {
+		Name  string
+		Age   int
+		Inner Inner
+	}
+
+	d := Doc{Name: "Alice"} // Age=0, Inner={}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	// Name 非零 → 保留
+	if result["Name"] != "Alice" {
+		t.Errorf("Name should be present, got %v", result["Name"])
+	}
+
+	// Age 零值 → 省略（全局 OmitEmpty）
+	if _, ok := result["Age"]; ok {
+		t.Errorf("Age should be omitted, got %v", result["Age"])
+	}
+
+	// Inner 零值 struct → 省略（全局 OmitZeroStruct）
+	if _, ok := result["Inner"]; ok {
+		t.Errorf("Inner should be omitted (OmitZeroStruct), got %v", result["Inner"])
+	}
+}
+
+// ─────────────────────────────────────────────
+// 20. P0 — 潜在 bug 暴露：uint64 溢出 + truncate 溢出
+// ─────────────────────────────────────────────
+
+func TestPreserveStructCodec_Encode_Uint64Overflow_NoMinSize(t *testing.T) {
+	// uint64 > MaxInt64，无 minsize tag，无全局 IntMinSize
+	// integerEncodeValue 里 u64 > MaxInt64 应返回 overflow 错误
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value uint64
+	}
+
+	d := Doc{Value: uint64(1<<63) + 1} // 大于 MaxInt64
+
+	_, err := encodeRaw(r, d)
+	if err == nil {
+		t.Error("expected overflow error for uint64 > MaxInt64 without minsize, got nil")
+	}
+}
+
+func TestPreserveStructCodec_Encode_Uint64Overflow_WithMinSize(t *testing.T) {
+	// uint64 > MaxInt64，有 minsize tag
+	// integerEncodeValue 里同样应返回 overflow 错误
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value uint64 `bson:",minsize"`
+	}
+
+	d := Doc{Value: uint64(1<<63) + 1}
+
+	_, err := encodeRaw(r, d)
+	if err == nil {
+		t.Error("expected overflow error for uint64 > MaxInt64 with minsize tag, got nil")
+	}
+}
+
+func TestPreserveStructCodec_Encode_Uint64Overflow_GlobalMinSize(t *testing.T) {
+	// uint64 > MaxInt64，全局 IntMinSize=true
+	opts := &options.BSONOptions{IntMinSize: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		Value uint64
+	}
+
+	d := Doc{Value: uint64(1<<63) + 1}
+
+	_, err := encodeRaw(r, d)
+	if err == nil {
+		t.Error("expected overflow error for uint64 > MaxInt64 with global IntMinSize, got nil")
+	}
+}
+
+func TestPreserveStructCodec_Truncate_DoubleOverflowToInt64(t *testing.T) {
+	// double 超出 int64 范围 → int64 字段 + truncate tag → 应报错
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value int64 `bson:",truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": 1e100})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	err = decodeRaw(r, raw, &decoded)
+	if err == nil {
+		t.Error("expected overflow error decoding 1e100 into int64 with truncate, got nil")
+	}
+}
+
+func TestPreserveStructCodec_Truncate_NegativeDoubleToInt8_Overflow(t *testing.T) {
+	// -200.0 → int8 + truncate → 应报溢出错误
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value int8 `bson:",truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": -200.0})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	err = decodeRaw(r, raw, &decoded)
+	if err == nil {
+		t.Error("expected overflow error decoding -200 into int8 with truncate, got nil")
+	}
+}
+
+func TestPreserveStructCodec_Truncate_NegativeDoubleToInt16_Overflow(t *testing.T) {
+	// -40000.0 → int16 + truncate → 应报溢出错误
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value int16 `bson:",truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": -40000.0})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	err = decodeRaw(r, raw, &decoded)
+	if err == nil {
+		t.Error("expected overflow error decoding -40000 into int16 with truncate, got nil")
+	}
+}
+
+func TestPreserveStructCodec_Decode_LowercaseFallback_Mixed(t *testing.T) {
+	// 混合：BSON 里有的 key 大写、有的小写 → 都能匹配
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Name  string
+		Age   int
+		Email string `bson:"email"` // tag 指定了小写
+	}
+
+	raw, err := encodeRaw(r, bson.M{
+		"Name":  "Bob",     // 大写 → 直接匹配
+		"age":   int32(25), // 小写 → 不匹配
+		"email": "b@x.com", // tag 匹配
+	})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if decoded.Name != "Bob" {
+		t.Errorf("Name: got %q, want Bob", decoded.Name)
+	}
+	if decoded.Age != 0 {
+		t.Errorf("Age: got %d, want 0", decoded.Age)
+	}
+	if decoded.Email != "b@x.com" {
+		t.Errorf("Email: got %q, want b@x.com", decoded.Email)
+	}
+}
+
+// ─────────────────────────────────────────────
+// 22. P1 — time.Time + OmitZeroStruct / isEmpty
+// ─────────────────────────────────────────────
+
+func TestPreserveStructCodec_OmitZeroStruct_TimeZero(t *testing.T) {
+	opts := &options.BSONOptions{OmitZeroStruct: true, OmitEmpty: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		T    time.Time
+		Name string
+	}
+
+	d := Doc{Name: "test"} // T 是零值 time.Time{}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if result["Name"] != "test" {
+		t.Errorf("Name should be present, got %v", result["Name"])
+	}
+	if _, ok := result["T"]; ok {
+		t.Errorf("zero time.Time should be omitted (OmitZeroStruct), got %v", result["T"])
+	}
+}
+
+func TestPreserveStructCodec_OmitZeroStruct_TimeNonZero(t *testing.T) {
+	opts := &options.BSONOptions{OmitZeroStruct: true, OmitEmpty: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		T time.Time
+	}
+
+	d := Doc{T: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if result["T"] == nil {
+		t.Error("non-zero time.Time should NOT be omitted")
+	}
+}
+
+// ─────────────────────────────────────────────
+// 23. P1 — Zeroer 接口
+// ─────────────────────────────────────────────
+
+type zeroerTestStruct struct {
+	Val int
+}
+
+func (z zeroerTestStruct) IsZero() bool {
+	return z.Val == 0
+}
+
+func TestPreserveStructCodec_OmitEmpty_Zeroer_Zero(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Z zeroerTestStruct `bson:",omitempty"`
+	}
+
+	d := Doc{} // Z.Val=0 → IsZero()=true
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if _, ok := result["Z"]; ok {
+		t.Errorf("Zeroer zero value should be omitted, got %v", result["Z"])
+	}
+}
+
+func TestPreserveStructCodec_OmitEmpty_Zeroer_NonZero(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Z zeroerTestStruct `bson:",omitempty"`
+	}
+
+	d := Doc{Z: zeroerTestStruct{Val: 42}} // IsZero()=false
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if _, ok := result["Z"]; !ok {
+		t.Error("Zeroer non-zero value should be present")
+	}
+}
+
+// ─────────────────────────────────────────────
+// 24. P1 — encoder/decoder 不存在的错误路径
+// ─────────────────────────────────────────────
+
+func TestPreserveStructCodec_Encode_NoEncoder_Chan(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		F chan int // chan 没有注册的 encoder
+	}
+
+	d := Doc{F: make(chan int)}
+
+	_, err := encodeRaw(r, d)
+	if err == nil {
+		t.Error("expected errNoEncoder for chan field, got nil")
+	}
+}
+
+func TestPreserveStructCodec_Decode_NoDecoder_Chan(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		F chan int
+	}
+
+	raw, err := encodeRaw(r, bson.M{"F": "unexpected"})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	err = decodeRaw(r, raw, &decoded)
+	if err == nil {
+		t.Error("expected errNoDecoder for chan field, got nil")
+	}
+}
+
+// ─────────────────────────────────────────────
+// 25. P1 — interface 字段 encode 时 IsNil 判断
+// ─────────────────────────────────────────────
+
+func TestPreserveStructCodec_OmitEmpty_InterfaceNil(t *testing.T) {
+	opts := &options.BSONOptions{OmitEmpty: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		V interface{}
+	}
+
+	d := Doc{V: nil} // interface 是 nil
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if _, ok := result["V"]; ok {
+		t.Errorf("nil interface should be omitted (global OmitEmpty), got %v", result["V"])
+	}
+}
+
+func TestPreserveStructCodec_OmitEmpty_InterfaceNonNil(t *testing.T) {
+	opts := &options.BSONOptions{OmitEmpty: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		V interface{}
+	}
+
+	d := Doc{V: "hello"} // interface 非 nil
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if result["V"] != "hello" {
+		t.Errorf("non-nil interface should be present, got %v", result["V"])
+	}
+}
+
+// ─────────────────────────────────────────────
+// 26. P1 — array（非 slice）零值 omitempty
+// ─────────────────────────────────────────────
+
+func TestPreserveStructCodec_OmitEmpty_Tag_Array(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Arr []int `bson:",omitempty"`
+	}
+
+	d := Doc{} // [] 零值
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if _, ok := result["Arr"]; ok {
+		t.Errorf("zero array should be omitted, got %v", result["Arr"])
+	}
+}
+
+func TestPreserveStructCodec_OmitEmpty_Tag_Array_NonZero(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Arr [3]int `bson:",omitempty"`
+	}
+
+	d := Doc{Arr: [3]int{1, 0, 0}} // 非零
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if _, ok := result["Arr"]; !ok {
+		t.Error("non-zero array should be present")
+	}
+}
+
+// ─────────────────────────────────────────────
+// 27. P1 — truncate + 非 double 类型（processed=false 路径）
+// ─────────────────────────────────────────────
+
+func TestPreserveStructCodec_Truncate_NonDouble_BsonInt32(t *testing.T) {
+	// BSON 里是 int32，不是 double → truncate 不应介入，正常 decode
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value int `bson:",truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": int32(42)})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if decoded.Value != 42 {
+		t.Errorf("Value: got %d, want 42 (non-double, normal decode)", decoded.Value)
+	}
+}
+
+func TestPreserveStructCodec_Truncate_NonDouble_BsonString(t *testing.T) {
+	// BSON 里是 string，不是 double → truncate 不介入，int 字段 decode string 应报错
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value int `bson:",truncate"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Value": "hello"})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	err = decodeRaw(r, raw, &decoded)
+	if err == nil {
+		t.Error("expected error decoding string into int even with truncate tag")
+	}
+}
+
+// ─────────────────────────────────────────────
+// 28. P2 — 裸 int（非 int64）大值 encode
+// ─────────────────────────────────────────────
+
+func TestPreserveStructCodec_Encode_IntLarge_NoMinSize(t *testing.T) {
+	// 裸 int 大值（> MaxInt32），无 minsize → 应编码为 int64
+	r := GetPreserveFieldRegistry(nil)
+
+	type Doc struct {
+		Value int
+	}
+
+	// 用一个确定大于 MaxInt32 的值
+	bigInt := int(1 << 40)
+	if bigInt <= math.MaxInt32 {
+		t.Skip("platform int is 32-bit, skipping")
+	}
+
+	d := Doc{Value: bigInt}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	val := result["Value"]
+	if _, ok := val.(int64); !ok {
+		t.Errorf("large int should encode as int64, got %T", val)
+	}
+}
+
+// ─────────────────────────────────────────────
+// 29. P2 — 嵌套 struct + OmitZeroStruct 非零值保留
+// ─────────────────────────────────────────────
+
+func TestPreserveStructCodec_OmitZeroStruct_NonZeroStruct_Preserved(t *testing.T) {
+	opts := &options.BSONOptions{OmitZeroStruct: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Inner struct {
+		Value int
+	}
+	type Doc struct {
+		Inner Inner
+	}
+
+	d := Doc{Inner: Inner{Value: 42}} // 非零 struct
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	inner, ok := result["Inner"].(bson.M)
+	if !ok {
+		t.Fatalf("Inner should exist, got %T", result["Inner"])
+	}
+	if inner["Value"] != int32(42) {
+		t.Errorf("Inner.Value: got %v, want 42", inner["Value"])
+	}
+}
+
+// ─────────────────────────────────────────────
+// 21. inline + omitempty / minsize / truncate 组合
+// ─────────────────────────────────────────────
+
+// --- inline + omitempty tag ---
+
+func TestPreserveStructCodec_Inline_OmitEmpty_Tag(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Embedded struct {
+		ID   string `bson:",omitempty"`
+		Type string `bson:",omitempty"`
+	}
+	type Doc struct {
+		Embedded `bson:",inline"`
+		Name     string
+	}
+
+	d := Doc{
+		Embedded: Embedded{}, // ID="", Type=""
+		Name:     "Alice",
+	}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if result["Name"] != "Alice" {
+		t.Errorf("Name should be present, got %v", result["Name"])
+	}
+	if _, ok := result["ID"]; ok {
+		t.Errorf("ID should be omitted (inline field + omitempty), got %v", result["ID"])
+	}
+	if _, ok := result["Type"]; ok {
+		t.Errorf("Type should be omitted (inline field + omitempty), got %v", result["Type"])
+	}
+}
+
+func TestPreserveStructCodec_Inline_OmitEmpty_Global(t *testing.T) {
+	opts := &options.BSONOptions{OmitEmpty: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Embedded struct {
+		ID   string
+		Type string
+	}
+	type Doc struct {
+		Embedded `bson:",inline"`
+		Name     string
+	}
+
+	d := Doc{
+		Embedded: Embedded{}, // ID="", Type=""
+		Name:     "Alice",
+	}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if result["Name"] != "Alice" {
+		t.Errorf("Name should be present, got %v", result["Name"])
+	}
+	if _, ok := result["ID"]; ok {
+		t.Errorf("ID should be omitted (global OmitEmpty + inline), got %v", result["ID"])
+	}
+	if _, ok := result["Type"]; ok {
+		t.Errorf("Type should be omitted (global OmitEmpty + inline), got %v", result["Type"])
+	}
+}
+
+func TestPreserveStructCodec_Inline_OmitEmpty_NonZeroKept(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Embedded struct {
+		ID   string `bson:",omitempty"`
+		Type string `bson:",omitempty"`
+	}
+	type Doc struct {
+		Embedded `bson:",inline"`
+	}
+
+	d := Doc{Embedded: Embedded{ID: "abc", Type: "user"}}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if result["ID"] != "abc" {
+		t.Errorf("ID should be present, got %v", result["ID"])
+	}
+	if result["Type"] != "user" {
+		t.Errorf("Type should be present, got %v", result["Type"])
+	}
+}
+
+// --- inline + minsize ---
+
+func TestPreserveStructCodec_Inline_MinSize_Tag(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Embedded struct {
+		Count int64  `bson:",minsize"`
+		Total uint64 `bson:",minsize"`
+	}
+	type Doc struct {
+		Embedded `bson:",inline"`
+		Name     string
+	}
+
+	d := Doc{
+		Embedded: Embedded{Count: 42, Total: 100},
+		Name:     "Alice",
+	}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if _, ok := result["Count"].(int32); !ok {
+		t.Errorf("Count should be int32 (inline + minsize), got %T", result["Count"])
+	}
+	if _, ok := result["Total"].(int32); !ok {
+		t.Errorf("Total should be int32 (inline + minsize), got %T", result["Total"])
+	}
+}
+
+func TestPreserveStructCodec_Inline_MinSize_Global(t *testing.T) {
+	opts := &options.BSONOptions{IntMinSize: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Embedded struct {
+		Count int64
+		Total uint64
+	}
+	type Doc struct {
+		Embedded `bson:",inline"`
+		Name     string
+	}
+
+	d := Doc{
+		Embedded: Embedded{Count: 42, Total: 100},
+		Name:     "Alice",
+	}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if _, ok := result["Count"].(int32); !ok {
+		t.Errorf("Count should be int32 (global IntMinSize + inline), got %T", result["Count"])
+	}
+	if _, ok := result["Total"].(int32); !ok {
+		t.Errorf("Total should be int32 (global IntMinSize + inline), got %T", result["Total"])
+	}
+}
+
+func TestPreserveStructCodec_Inline_MinSize_LargeValue(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Embedded struct {
+		Count int64 `bson:",minsize"`
+	}
+	type Doc struct {
+		Embedded `bson:",inline"`
+	}
+
+	d := Doc{Embedded: Embedded{Count: 1 << 40}}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if _, ok := result["Count"].(int64); !ok {
+		t.Errorf("Count should be int64 (large value + inline minsize), got %T", result["Count"])
+	}
+}
+
+// --- inline + truncate (decode) ---
+
+func TestPreserveStructCodec_Inline_Truncate_Tag(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Embedded struct {
+		Count int `bson:",truncate"`
+	}
+	type Doc struct {
+		Embedded `bson:",inline"`
+		Name     string
+	}
+
+	// 用 bson.M 构造 BSON，Count 是 double
+	raw, err := encodeRaw(r, bson.M{"Count": 3.99, "Name": "Alice"})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if decoded.Embedded.Count != 3 {
+		t.Errorf("Count should be 3 (truncated from 3.99), got %d", decoded.Embedded.Count)
+	}
+	if decoded.Name != "Alice" {
+		t.Errorf("Name should be Alice, got %q", decoded.Name)
+	}
+}
+
+func TestPreserveStructCodec_Inline_Truncate_Global(t *testing.T) {
+	opts := &options.BSONOptions{AllowTruncatingDoubles: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Embedded struct {
+		Count int
+	}
+	type Doc struct {
+		Embedded `bson:",inline"`
+	}
+
+	raw, err := encodeRaw(r, bson.M{"Count": 7.3})
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var decoded Doc
+	if err := decodeRaw(r, raw, &decoded); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+
+	if decoded.Embedded.Count != 7 {
+		t.Errorf("Count should be 7 (global truncate + inline), got %d", decoded.Embedded.Count)
+	}
+}
+
+// --- inline pointer + minsize ---
+
+func TestPreserveStructCodec_InlinePointer_MinSize_Tag(t *testing.T) {
+	r := GetPreserveFieldRegistry(nil)
+
+	type Embedded struct {
+		Count int64 `bson:",minsize"`
+	}
+	type Doc struct {
+		*Embedded `bson:",inline"`
+		Name      string
+	}
+
+	d := Doc{
+		Embedded: &Embedded{Count: 42},
+		Name:     "Alice",
+	}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if _, ok := result["Count"].(int32); !ok {
+		t.Errorf("Count should be int32 (inline pointer + minsize), got %T", result["Count"])
+	}
+}
+
+// --- inline map + 全局 OmitEmpty（验证不崩溃、行为正确）---
+
+func TestPreserveStructCodec_InlineMap_GlobalOmitEmpty(t *testing.T) {
+	opts := &options.BSONOptions{OmitEmpty: true}
+	r := GetPreserveFieldRegistry(opts)
+
+	type Doc struct {
+		Name string
+		Ext  map[string]interface{} `bson:",inline"`
+	}
+
+	d := Doc{
+		Name: "Alice",
+		Ext: map[string]interface{}{
+			"Custom": "value",
+		},
+	}
+
+	raw, err := encodeRaw(r, d)
+	if err != nil {
+		t.Fatalf("encode failed: %v", err)
+	}
+
+	var result bson.M
+	if err := bsonUnmarshal(raw, &result); err != nil {
+		t.Fatalf("unmarshal failed: %v", err)
+	}
+
+	if result["Name"] != "Alice" {
+		t.Errorf("Name should be present, got %v", result["Name"])
+	}
+	if result["Custom"] != "value" {
+		t.Errorf("Custom should be present from inline map, got %v", result["Custom"])
 	}
 }
