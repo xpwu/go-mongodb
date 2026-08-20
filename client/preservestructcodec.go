@@ -634,6 +634,7 @@ func (sc *PreserveStructCodec) DecodeValue(dc bson.DecodeContext, vr bson.ValueR
 			// if the original name isn't found in the struct description, try again with the name in lowercase
 			// this could match if a BSON tag isn't specified because by default, describeStruct lowercases all field
 			// names
+			// NOTE: Not work in the codec
 			fd, exists = sd.fm[strings.ToLower(name)]
 		}
 
