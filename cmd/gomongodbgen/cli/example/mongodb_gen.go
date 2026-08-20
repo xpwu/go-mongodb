@@ -20,7 +20,7 @@ func main() {
 	// 生成物会放到 ./zgen/ 目录下
 	cli.RunFromArgs(
 		cli.NewBuildConfig(
-			xopt.WithPreserveField(true),
+			xopt.WithPreserveField(),
 		).OutDir("./zgen"),
 	)
 }

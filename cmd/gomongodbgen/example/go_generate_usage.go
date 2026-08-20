@@ -74,7 +74,7 @@ type Location struct {
 //
 //	func main() {
 //	    cli.RunFromArgs(
-//	        cli.NewBuildConfig(xopt.WithPreserveField(true)).
+//	        cli.NewBuildConfig(xopt.WithPreserveField()).
 //	            OutDir("$GOMOD/zgen"),
 //	    )
 //	}
