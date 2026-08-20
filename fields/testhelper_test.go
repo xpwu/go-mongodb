@@ -157,3 +157,16 @@ func arrayEqual[T any](a, b []T) bool {
 
 	return true
 }
+
+func DtoMDeeply(doc bson.D) bson.M {
+	ret := bson.M{}
+	for _, e := range doc {
+		if ed, ok := e.Value.(bson.D); ok {
+			ret[e.Key] = DtoMDeeply(ed)
+		} else {
+			ret[e.Key] = e.Value
+		}
+	}
+
+	return ret
+}

@@ -3,7 +3,6 @@ package client
 import (
 	"bytes"
 	"encoding/json"
-	"github.com/xpwu/go-mongodb/x"
 	"reflect"
 	"testing"
 
@@ -60,9 +59,33 @@ func jsonEqual(a, b string) bool {
 	return reflect.DeepEqual(va, vb)
 }
 
+func MtoDDeeply(m bson.M) bson.D {
+	ret := bson.D{}
+	for k, v := range m {
+		switch vv := v.(type) {
+		case bson.M:
+			ret = append(ret, bson.E{Key: k, Value: MtoDDeeply(vv)})
+		case bson.A:
+			r := bson.A{}
+			for _, a := range vv {
+				if am, ok := a.(bson.M); ok {
+					r = append(r, MtoDDeeply(am))
+				} else {
+					r = append(r, a)
+				}
+			}
+			ret = append(ret, bson.E{Key: k, Value: r})
+		default:
+			ret = append(ret, bson.E{Key: k, Value: v})
+		}
+	}
+
+	return ret
+}
+
 // bsonMEqual 深度比较两个 bson.M
 func bsonMEqual(got, want bson.M) bool {
-	return jsonEqual(got.String(), filter.FlattenDoc(x.MtoDDeeply(want)).String())
+	return jsonEqual(got.String(), filter.FlattenDoc(MtoDDeeply(want)).String())
 }
 
 // bsonDEqual 深度比较两个 bson.D
@@ -505,6 +528,15 @@ func TestGetLowerFieldRegistry_Filter_In(t *testing.T) {
 	}
 }
 
+func DtoM(doc bson.D) bson.M {
+	ret := bson.M{}
+	for _, e := range doc {
+		ret[e.Key] = e.Value
+	}
+
+	return ret
+}
+
 func TestGetLowerFieldRegistry_Filter_And(t *testing.T) {
 	r := GetLowerFieldRegistry()
 	f1 := fields.NewBaseField[string]("name")
@@ -526,7 +558,7 @@ func TestGetLowerFieldRegistry_Filter_And(t *testing.T) {
 			bson.D{{"age", bson.D{{"$gte", 18}}}},
 		},
 	}})
-	if !bsonMEqual(got, x.DtoM(want)) {
+	if !bsonMEqual(got, DtoM(want)) {
 		t.Errorf("And: \ngot  %v, \nwant %v", got, want)
 	}
 }
@@ -1390,7 +1422,7 @@ func TestGetPreserveFieldRegistry_PreservesNestedStruct(t *testing.T) {
 	}
 
 	var result bson.M
-	if err := bson.Unmarshal(raw, &result); err != nil {
+	if err := bsonUnmarshal(raw, &result); err != nil {
 		t.Fatalf("unmarshal failed: %v", err)
 	}
 
@@ -1398,12 +1430,11 @@ func TestGetPreserveFieldRegistry_PreservesNestedStruct(t *testing.T) {
 		t.Errorf("Expected OuterField preserved, got %v", result)
 	}
 
-	inner, ok := result["Inner"].(bson.D)
+	inner, ok := result["Inner"].(bson.M)
 	if !ok {
-		t.Fatalf("Expected Inner to be bson.D, got %T", result["Inner"])
+		t.Fatalf("Expected Inner to be bson.M, got %T", result["Inner"])
 	}
-	innerM := x.DtoMDeeply(inner)
-	if v, ok := innerM["InnerField"]; !ok || v != "inside" {
+	if v, ok := inner["InnerField"]; !ok || v != "inside" {
 		t.Errorf("Expected Inner.InnerField preserved, got %v", inner)
 	}
 }

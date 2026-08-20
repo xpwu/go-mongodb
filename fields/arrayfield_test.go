@@ -313,7 +313,7 @@ func TestArrayField_SameElemMeet_And(t *testing.T) {
 	want := bson.D{{"dim_cm", bson.D{{"$elemMatch",
 		bson.D{{"$gt", 22}, {"$lt", 30}},
 	}}}}
-	if !bsonMEqual(x.DtoMDeeply(got), x.DtoMDeeply(want)) {
+	if !bsonMEqual(DtoMDeeply(got), DtoMDeeply(want)) {
 		t.Errorf("SameElemMeet(And): \ngot  %v, \nwant %v", got, want)
 	}
 }
