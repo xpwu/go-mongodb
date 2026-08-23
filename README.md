@@ -120,7 +120,7 @@ import (
 
 func main() {
     cfg := client.Config{URI: "mongodb://localhost:27017/xxxx"}
-    cli := client.MustGet(cfg)
+    cli := client.MustGet(cfg.CacheId().WithSuffix("user-service"))
     coll := cli.Database("market").Collection("userinfo")
 
     // 类型安全过滤：等同于 bson.M{"age": bson.M{"$gte": 18}, "name": "Alice"}
@@ -206,12 +206,20 @@ u := updater.Batch(
 ### 6. 客户端连接池缓存（client 包）
 
 - 内置基于 `sync.Map` 的客户端缓存机制 `GetFromCache` / `MustGet`。
-- **相同的 `Config` 值**（而非指针地址）会复用同一个 `*mongo.Client` 实例，避免频繁创建连接池。
+- 客户端由 `CacheId` 唯一标识，它包含 `Config`（连接参数）和一个可选的 `suffix`（后缀区分）。
+- **相同的 `CacheId`**（Config + suffix 都相同）复用同一个 `*mongo.Client` 实例。
+- 同一个 Config 但不同 suffix → **不同的客户端，各自独立的连接池**。
 - 支持 `xopt.Option` 进行初始化配置，首次创建后忽略后续不一致的 Option，保证运行时行为稳定。
 
 ```go
 cfg := client.Config{URI: "mongodb://localhost:27017/xxxx"}
-cli := client.MustGet(cfg) // 相同 Config 值复用同一个连接池
+// 同一个实例，不同模块 → 不同客户端，各自独立连接池
+cliA := client.MustGet(cfg.CacheId().WithSuffix("moduleA"), xopt.WithPreserveField())
+cliB := client.MustGet(cfg.CacheId().WithSuffix("moduleB"), xopt.WithPreserveField())
+
+// 如果 suffix 为空，等价于只用 Config 做 key
+cli := client.MustGet(cfg.CacheId())
+
 ```
 
 ### 7. 索引与地理信息支持（index / geo 包）
@@ -347,7 +355,7 @@ cli.RunFromArgs(
 // 运行时创建 MongoDB Client
 cfg := client.Config{URI: "mongodb://localhost:27017/xxxx"}
 opt := xopt.WithPreserveField() // ← 必须与生成阶段一致
-cli := client.MustGet(cfg, opt)
+cli := client.MustGet(cfg.CacheId().WithSuffix("user-service"), opt)
 ```
 
 #### WithPreserveField 的 bson tag 说明
@@ -396,7 +404,7 @@ bsonOpts := &options.BSONOptions{
 	AllowTruncatingDoubles: false,
 }
 opt := xopt.WithBsonOptions(bsonOpts)
-cli := client.MustGet(cfg, opt)
+cli := client.MustGet(cfg.CacheId().WithSuffix("user-service"), opt)
 ```
 
 > ⚠️ **规则：生成阶段和运行时阶段的 `xopt.Option` 必须完全一致。**
