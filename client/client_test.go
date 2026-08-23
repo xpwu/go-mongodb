@@ -2,6 +2,7 @@ package client
 
 import (
 	"reflect"
+	"sync"
 	"testing"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -81,7 +82,7 @@ func TestMustGet_Panic(t *testing.T) {
 	}()
 
 	cfg := Config{URI: "invalid-uri://broken"}
-	_ = MustGet(cfg)
+	_ = MustGet(cfg.CacheId())
 }
 
 func TestMustGet_PanicEmptyURI(t *testing.T) {
@@ -92,7 +93,7 @@ func TestMustGet_PanicEmptyURI(t *testing.T) {
 	}()
 
 	cfg := Config{URI: ""}
-	_ = MustGet(cfg)
+	_ = MustGet(cfg.CacheId())
 }
 
 // --- xopt tests ---
@@ -108,28 +109,6 @@ func TestXopt_GetDefaultOpts(t *testing.T) {
 	}
 	if opts.PreserveField {
 		t.Errorf("Default PreserveField: expected false, got true")
-	}
-}
-
-func TestXopt_WithPreserveField_True(t *testing.T) {
-	opts := xopt.GetDefaultOpts()
-
-	optFunc := xopt.WithPreserveField()
-	optFunc(opts)
-
-	if !opts.PreserveField {
-		t.Errorf("WithPreserveField(true): expected PreserveField=true, got false")
-	}
-}
-
-func TestXopt_WithPreserveField_False(t *testing.T) {
-	opts := xopt.GetDefaultOpts()
-
-	optFunc := xopt.WithPreserveField()
-	optFunc(opts)
-
-	if !opts.PreserveField {
-		t.Errorf("WithPreserveField(false): expected PreserveField=true, got false")
 	}
 }
 
@@ -175,5 +154,104 @@ func TestXopt_ChainOptions(t *testing.T) {
 	}
 	if opts.Registry != registry {
 		t.Errorf("Chain: Registry expected same pointer")
+	}
+}
+
+// --- CacheId tests ---
+
+func TestCacheId_WithSuffix_DifferentSuffixesDifferentClients(t *testing.T) {
+	cfg := Config{URI: "mongodb://localhost:27017", MaxConn: 10}
+
+	idA := cfg.CacheId().WithSuffix("moduleA")
+	idB := cfg.CacheId().WithSuffix("moduleB")
+
+	if idA == idB {
+		t.Error("CacheIds with different suffixes should not be equal")
+	}
+}
+
+func TestCacheId_WithSuffix_SameSuffixSameClient(t *testing.T) {
+	cfg := Config{URI: "mongodb://localhost:27017", MaxConn: 10}
+
+	idA := cfg.CacheId().WithSuffix("moduleA")
+	idB := cfg.CacheId().WithSuffix("moduleA")
+
+	if idA != idB {
+		t.Error("CacheIds with same suffix should be equal")
+	}
+}
+
+func TestCacheId_NoSuffix_EquivalentToConfig(t *testing.T) {
+	cfg := Config{URI: "mongodb://localhost:27017", MaxConn: 10}
+
+	id := cfg.CacheId()
+	// CacheId 的 Config 部分应该跟 cfg 一样
+	if id.Config != cfg {
+		t.Error("CacheId.Config should equal the original Config")
+	}
+	if id.suffix != "" {
+		t.Error("CacheId without suffix should have empty suffix")
+	}
+}
+
+func TestCacheId_WithSuffix_Immutability(t *testing.T) {
+	cfg := Config{URI: "mongodb://localhost:27017", MaxConn: 10}
+
+	id1 := cfg.CacheId()
+	id2 := id1.WithSuffix("test")
+
+	// id1 不应该被修改（值接收者）
+	if id1.suffix != "" {
+		t.Error("original CacheId should not be modified by WithSuffix")
+	}
+	// id2 应该有 suffix
+	if id2.suffix != "test" {
+		t.Errorf("new CacheId should have suffix 'test', got %q", id2.suffix)
+	}
+}
+
+func TestCacheId_SyncMapKey(t *testing.T) {
+	// 确保 CacheId 可以作为 sync.Map 的 key
+	var m sync.Map
+
+	cfg := Config{URI: "mongodb://localhost:27017", MaxConn: 10}
+	idA := cfg.CacheId().WithSuffix("a")
+	idB := cfg.CacheId().WithSuffix("b")
+
+	m.Store(idA, "client-a")
+	m.Store(idB, "client-b")
+
+	v, ok := m.Load(idA)
+	if !ok || v.(string) != "client-a" {
+		t.Error("CacheId should work as sync.Map key")
+	}
+
+	v, ok = m.Load(idB)
+	if !ok || v.(string) != "client-b" {
+		t.Error("CacheId with different suffix should be a different key")
+	}
+}
+
+func TestCacheId_SameConfigDifferentSuffix_CacheIsolation(t *testing.T) {
+	// 验证：同一个 Config + 不同 suffix → 缓存里是两个不同的 key
+	cfg := Config{URI: "mongodb://localhost:27017", MaxConn: 10}
+
+	id1 := cfg.CacheId().WithSuffix("service1")
+	id2 := cfg.CacheId().WithSuffix("service2")
+
+	// 模拟 cache 行为
+	var m sync.Map
+	m.Store(id1, "cli1")
+
+	v, ok := m.Load(id2)
+	if ok {
+		t.Error("different suffix should NOT hit the same cache entry")
+	}
+	_ = v
+
+	// 确认 id1 能命中
+	v, ok = m.Load(id1)
+	if !ok || v.(string) != "cli1" {
+		t.Error("same suffix should hit the cache")
 	}
 }

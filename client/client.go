@@ -340,30 +340,53 @@ func NewClient(config *Config, opts ...xopt.Option) (client *mongo.Client, err e
 
 var clients = sync.Map{}
 
-// GetFromCache returns a cached MongoDB client for the given Config.
-// The Config uniquely identifies a client and is expected to originate
-// from infrastructure/deployment configuration (e.g. environment variables,
-// config files).
+// CacheId uniquely identifies a MongoDB client instance.
 //
-// Options (xopt.Option) are applied only during the initial creation of
-// the client. If a client already exists for the given Config, subsequent
-// calls ignore any provided options and return the existing instance.
-// This ensures stable runtime behavior and avoids connection pool churn.
+// It is composed of a Config (connection parameters) and an optional suffix
+// for distinguishing multiple clients that share the same Config values.
 //
-// Callers should treat Config as immutable and provide consistent options
-// across calls. Inconsistent options after the first call are silently ignored.
-func GetFromCache(config Config, opts ...xopt.Option) (client *mongo.Client, err error) {
-	c, ok := clients.Load(config)
+// The suffix is completely free-form: callers can use anything that makes
+// sense in their context—module name, database name, encoding mode, config
+// struct field name, etc.
+//
+// If suffix is empty, the CacheId is equivalent to Config alone.
+type CacheId struct {
+	Config
+	suffix string
+}
+
+func (c CacheId) WithSuffix(suffix string) CacheId {
+	c.suffix = suffix
+	return c
+}
+
+func (c Config) CacheId() CacheId {
+	return CacheId{Config: c}
+}
+
+// GetFromCache returns a cached MongoDB client identified by the given CacheId.
+//
+// CacheId is composed of a Config (connection parameters) and an optional
+// suffix. The Config determines the actual MongoDB connection; the suffix
+// allows callers to maintain multiple independent clients even when the
+// Config values are identical (e.g. different modules, different databases,
+// or different encoding options).
+//
+// Options (xopt.Option) are applied only during the initial creation.
+// If a client already exists for the given CacheId, subsequent calls
+// ignore any provided options and return the existing instance.
+func GetFromCache(cacheId CacheId, opts ...xopt.Option) (client *mongo.Client, err error) {
+	c, ok := clients.Load(cacheId)
 	if ok {
 		return c.(*mongo.Client), nil
 	}
 
-	nc, err := NewClient(&config, opts...)
+	nc, err := NewClient(&cacheId.Config, opts...)
 	if err != nil {
 		return
 	}
 
-	if c, loaded := clients.LoadOrStore(config, nc); loaded {
+	if c, loaded := clients.LoadOrStore(cacheId, nc); loaded {
 		_ = nc.Disconnect(context.Background())
 		return c.(*mongo.Client), nil
 	}
@@ -371,22 +394,22 @@ func GetFromCache(config Config, opts ...xopt.Option) (client *mongo.Client, err
 	return nc, nil
 }
 
-// MustGet returns a cached MongoDB client for the given Config,
+// MustGet returns a cached MongoDB client identified by the given CacheId,
 // panicking if the client cannot be created.
 //
 // It delegates to GetFromCache and is intended for use in initialization
 // code where a failure to obtain a database client is considered fatal.
 //
-// Like GetFromCache, Config uniquely identifies the client, and any
+// Like GetFromCache, CacheId uniquely identifies the client, and any
 // xopt.Options are applied only during the initial creation. Subsequent
-// calls with the same Config ignore new options and return the existing
+// calls with the same CacheId ignore new options and return the existing
 // client.
 //
 // This function should never be called with varying options for the same
-// Config. Such misuse will not change the cached client and may indicate
+// CacheId. Such misuse will not change the cached client and may indicate
 // a configuration error in the application.
-func MustGet(config Config, opts ...xopt.Option) *mongo.Client {
-	r, err := GetFromCache(config, opts...)
+func MustGet(cacheId CacheId, opts ...xopt.Option) *mongo.Client {
+	r, err := GetFromCache(cacheId, opts...)
 	if err != nil {
 		panic(err)
 	}
