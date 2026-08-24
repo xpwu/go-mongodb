@@ -40,6 +40,10 @@ type LikeUserInfoFieldSubFields interface {
 	AliasWxF() WxField
 	LikeWx_WxDefF() LikeWxField[WxDef]
 	DefAliasWx_WXDef2F() LikeWxField[WXDef2]
+	ByteF() fields.ByteField
+	BytesF() fields.ArrayComparableField[byte, fields.ByteField]
+	RuneF() fields.RuneField
+	RunesF() fields.ArrayComparableField[rune, fields.RuneField]
 	LikeWxFieldSubFields
 }
 
@@ -160,4 +164,26 @@ func (s *likeUserInfoField[T]) LikeWx_WxDefF() LikeWxField[WxDef] {
 
 func (s *likeUserInfoField[T]) DefAliasWx_WXDef2F() LikeWxField[WXDef2] {
 	return NewLikeWxField[WXDef2](fields.SubField(s.FullName(), "defaliaswx_wxdef2"))
+}
+
+func (s *likeUserInfoField[T]) ByteF() fields.ByteField {
+	return fields.NewByteField(fields.SubField(s.FullName(), "byte"))
+}
+
+func (s *likeUserInfoField[T]) BytesF() fields.ArrayComparableField[byte, fields.ByteField] {
+	return func(name string) fields.ArrayComparableField[byte, fields.ByteField] {
+			newElem := fields.NewByteField
+			return fields.NewArrayAnyComparableField[byte, fields.ByteField](name, newElem)
+		}(fields.SubField(s.FullName(), "bytes"))
+}
+
+func (s *likeUserInfoField[T]) RuneF() fields.RuneField {
+	return fields.NewRuneField(fields.SubField(s.FullName(), "rune"))
+}
+
+func (s *likeUserInfoField[T]) RunesF() fields.ArrayComparableField[rune, fields.RuneField] {
+	return func(name string) fields.ArrayComparableField[rune, fields.RuneField] {
+			newElem := fields.NewRuneField
+			return fields.NewArrayAnyComparableField[rune, fields.RuneField](name, newElem)
+		}(fields.SubField(s.FullName(), "runes"))
 }

@@ -56,6 +56,10 @@ type UserInfo struct {
 	LikeWx_WxDef           WxDef
 	InWxDef                WxDef `bson:",inline"`
 	DefAliasWx_WXDef2      WXDef2
+	Byte                   byte
+	Bytes                  []byte
+	Rune                   rune
+	Runes                  []rune
 }
 
 var filter2 = UserInfoDoc.AliasWxF().LikeStringName_elsetype_FullNameF().Eq("")
