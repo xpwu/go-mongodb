@@ -58,10 +58,13 @@ type LineString struct {
 	C    []Coordinate `bson:"coordinates"`
 }
 
-func NewLineString(c ...Coordinate) *LineString {
+func NewLineString(c0, c1 Coordinate, c ...Coordinate) *LineString {
+	cs := make([]Coordinate, 2, len(c)+2)
+	cs[0] = c0
+	cs[1] = c1
 	return &LineString{
 		Type: "LineString",
-		C:    c,
+		C:    append(cs, c...),
 	}
 }
 
@@ -84,8 +87,17 @@ func NewMultiLineString(ls ...LineString) *MultiLineString {
 	return ret
 }
 
-//Ring the first and last coordinates in the array must be the same
+//Ring the first and last coordinates in the array must be the same, and len(Coordinates) >= 4
 type Ring = []Coordinate
+
+func checkRing(r Ring) {
+	if len(r) < 4 {
+		panic("geo: Polygon ring must have at least 4 coordinates (min 3 unique + closing)")
+	}
+	if r[0][0] != r[len(r)-1][0] || r[0][1] != r[len(r)-1][1] {
+		panic("geo: Polygon ring first and last coordinate must be identical")
+	}
+}
 
 type Polygon struct {
 	Type string `bson:"type"`
@@ -93,6 +105,11 @@ type Polygon struct {
 }
 
 func NewPolygon(r1 Ring, rs ...Ring) *Polygon {
+	checkRing(r1)
+	for _, r := range rs {
+		checkRing(r)
+	}
+
 	ret := &Polygon{
 		Type: "Polygon",
 		C:    make([]Ring, 1, len(rs)+1),
@@ -123,7 +140,7 @@ func NewMultiPolygon(pgs ...Polygon) *MultiPolygon {
 	return ret
 }
 
-func (m *MultiPolygon) Polygons() []Polygon {
+func (m MultiPolygon) Polygons() []Polygon {
 	ret := make([]Polygon, len(m.C))
 
 	for i, c := range m.C {
@@ -133,31 +150,49 @@ func (m *MultiPolygon) Polygons() []Polygon {
 	return ret
 }
 
+// Geometry 是所有 GeoJSON 几何类型的标记接口。
+// geoType() 不导出，确保只有本包内的类型能实现该接口。
+type Geometry interface {
+	geoType() string
+}
+
+func (s SpherePoint) geoType() string      { return s.Type }
+func (m MultiSpherePoint) geoType() string { return m.Type }
+func (l LineString) geoType() string       { return l.Type }
+func (m MultiLineString) geoType() string  { return m.Type }
+func (p Polygon) geoType() string          { return p.Type }
+func (m MultiPolygon) geoType() string     { return m.Type }
+func (c Collection) geoType() string       { return c.Type }
+
 type Collection struct {
-	Type string `bson:"type"`
-	C    []any  `bson:"geometries"`
+	Type string     `bson:"type"`
+	C    []Geometry `bson:"geometries"`
 }
 
 func NewGeoCollection() *Collection {
 	return &Collection{Type: "GeometryCollection"}
 }
 
-func (g *Collection) AddPoint(p SpherePoint) {
-	g.C = append(g.C, p)
+func (c *Collection) AddPoint(p SpherePoint) {
+	c.C = append(c.C, p)
 }
 
-func (g *Collection) AddMultiPoint(p MultiSpherePoint) {
-	g.C = append(g.C, p)
+func (c *Collection) AddMultiPoint(p MultiSpherePoint) {
+	c.C = append(c.C, p)
 }
 
-func (g *Collection) AddLineString(p LineString) {
-	g.C = append(g.C, p)
+func (c *Collection) AddLineString(p LineString) {
+	c.C = append(c.C, p)
 }
 
-func (g *Collection) AddPolygon(p Polygon) {
-	g.C = append(g.C, p)
+func (c *Collection) AddPolygon(p Polygon) {
+	c.C = append(c.C, p)
 }
 
-func (g *Collection) AddMultiPolygon(p MultiPolygon) {
-	g.C = append(g.C, p)
+func (c *Collection) AddMultiPolygon(p MultiPolygon) {
+	c.C = append(c.C, p)
+}
+
+func (c *Collection) AddCollection(p Collection) {
+	c.C = append(c.C, p)
 }

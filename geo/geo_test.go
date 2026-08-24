@@ -138,7 +138,7 @@ func TestMultiSpherePoint_New(t *testing.T) {
 
 func TestLineString_New(t *testing.T) {
 	coords := []Coordinate{{0, 0}, {1, 1}, {2, 2}}
-	ls := NewLineString(coords...)
+	ls := NewLineString(coords[0], coords[1], coords[2:]...)
 
 	if ls.Type != "LineString" {
 		t.Errorf("LineString Type: got %s, want 'LineString'", ls.Type)
@@ -151,8 +151,8 @@ func TestLineString_New(t *testing.T) {
 // --- MultiLineString tests ---
 
 func TestMultiLineString_New(t *testing.T) {
-	ls1 := *NewLineString([]Coordinate{{0, 0}, {1, 1}}...)
-	ls2 := *NewLineString([]Coordinate{{2, 2}, {3, 3}}...)
+	ls1 := *NewLineString(Coordinate{0, 0}, Coordinate{1, 1})
+	ls2 := *NewLineString(Coordinate{2, 2}, Coordinate{3, 3})
 
 	mls := NewMultiLineString(ls1, ls2)
 
@@ -235,6 +235,10 @@ func TestCollection_AddPoint(t *testing.T) {
 	if len(gc.C) != 1 {
 		t.Fatalf("AddPoint: got %d, want 1", len(gc.C))
 	}
+
+	if _, ok := gc.C[0].(SpherePoint); !ok {
+		t.Error("C[0] should be SpherePoint")
+	}
 }
 
 func TestCollection_AddMultiPoint(t *testing.T) {
@@ -252,7 +256,7 @@ func TestCollection_AddMultiPoint(t *testing.T) {
 
 func TestCollection_AddLineString(t *testing.T) {
 	gc := NewGeoCollection()
-	ls := *NewLineString([]Coordinate{{0, 0}, {1, 1}}...)
+	ls := *NewLineString(Coordinate{0, 0}, Coordinate{1, 1})
 
 	gc.AddLineString(ls)
 
@@ -288,12 +292,61 @@ func TestCollection_AddMultiPolygon(t *testing.T) {
 func TestCollection_MultipleAdds(t *testing.T) {
 	gc := NewGeoCollection()
 	p := *NewSpherePoint(116.46, 39.92)
-	ls := *NewLineString([]Coordinate{{0, 0}, {1, 1}}...)
+	ls := *NewLineString(Coordinate{0, 0}, Coordinate{1, 1})
 
 	gc.AddPoint(p)
 	gc.AddLineString(ls)
 
 	if len(gc.C) != 2 {
 		t.Fatalf("MultipleAdds: got %d, want 2", len(gc.C))
+	}
+}
+
+func TestCollection_AddCollection(t *testing.T) {
+	gc := NewGeoCollection()
+	inner := NewGeoCollection()
+	inner.AddPoint(*NewSpherePoint(116.46, 39.92))
+
+	gc.AddCollection(*inner)
+
+	if len(gc.C) != 1 {
+		t.Fatalf("AddCollection: got %d, want 1", len(gc.C))
+	}
+}
+
+func TestGeometry_geoType(t *testing.T) {
+	tests := []struct {
+		name     string
+		geometry Geometry
+		want     string
+	}{
+		{"SpherePoint", NewSpherePoint(116.46, 39.92), "Point"},
+		{"MultiSpherePoint", func() Geometry {
+			p := *NewSpherePoint(116.46, 39.92)
+			return NewMultiSpherePoint(p)
+		}(), "MultiPoint"},
+		{"LineString", NewLineString(Coordinate{0, 0}, Coordinate{1, 1}), "LineString"},
+		{"MultiLineString", func() Geometry {
+			ls := *NewLineString(Coordinate{0, 0}, Coordinate{1, 1})
+			return NewMultiLineString(ls)
+		}(), "MultiLineString"},
+		{"Polygon", func() Geometry {
+			r := Ring{{0, 0}, {0, 1}, {1, 1}, {1, 0}, {0, 0}}
+			return NewPolygon(r)
+		}(), "Polygon"},
+		{"MultiPolygon", func() Geometry {
+			r := Ring{{0, 0}, {0, 1}, {1, 1}, {1, 0}, {0, 0}}
+			p := *NewPolygon(r)
+			return NewMultiPolygon(p)
+		}(), "MultiPolygon"},
+		{"Collection", NewGeoCollection(), "GeometryCollection"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.geometry.geoType(); got != tt.want {
+				t.Errorf("geoType() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }

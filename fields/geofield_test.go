@@ -193,7 +193,7 @@ func TestSpherePointField_IntersectPoly(t *testing.T) {
 func TestSpherePointField_IntersectLineString(t *testing.T) {
 	f := NewSpherePointField("location")
 	ls := geo.NewLineString(
-		[]geo.Coordinate{{0, 0}, {10, 10}, {20, 5}}...,
+		geo.Coordinate{0, 1}, geo.Coordinate{10, 10}, []geo.Coordinate{{20, 5}}...,
 	)
 
 	flt := f.IntersectLineString(*ls)
@@ -426,7 +426,7 @@ func TestNewSpherePoint_Panic_LatTooLow(t *testing.T) {
 
 func TestNewLineString(t *testing.T) {
 	ls := geo.NewLineString(
-		[]geo.Coordinate{{0, 0}, {10, 10}, {20, 5}}...,
+		geo.Coordinate{0, 1}, geo.Coordinate{10, 10}, []geo.Coordinate{{20, 5}}...,
 	)
 	if ls.Type != "LineString" {
 		t.Errorf("Type: got %v, want LineString", ls.Type)
