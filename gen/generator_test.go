@@ -252,6 +252,38 @@ func TestLookupPrimitive_Bool(t *testing.T) {
 	}
 }
 
+func TestLookupPrimitive_Byte(t *testing.T) {
+	c := NewConfig()
+	g := NewGenerator(c)
+	ts := parseAstTypeWithLoader(&ast.Ident{Name: "byte"}, nil, "", nil)
+	info, ok := g.lookupPrimitive(ts)
+	if !ok {
+		t.Fatal("lookupPrimitive(byte) should succeed")
+	}
+	if !info.EqualAble {
+		t.Error("byte should be EqualAble")
+	}
+	if !strings.Contains(info.Field.Name(), "Byte") {
+		t.Errorf("Field name = %s, should contain Byte", info.Field.Name())
+	}
+}
+
+func TestLookupPrimitive_Rune(t *testing.T) {
+	c := NewConfig()
+	g := NewGenerator(c)
+	ts := parseAstTypeWithLoader(&ast.Ident{Name: "rune"}, nil, "", nil)
+	info, ok := g.lookupPrimitive(ts)
+	if !ok {
+		t.Fatal("lookupPrimitive(rune) should succeed")
+	}
+	if !info.EqualAble {
+		t.Error("rune should be EqualAble")
+	}
+	if !strings.Contains(info.Field.Name(), "Rune") {
+		t.Errorf("Field name = %s, should contain Rune", info.Field.Name())
+	}
+}
+
 func TestLookupPrimitive_NotBuiltin(t *testing.T) {
 	c := NewConfig()
 	g := NewGenerator(c)
@@ -826,6 +858,8 @@ func TestKind_ConsistencyWithReflect(t *testing.T) {
 		"float64": reflect.Float64,
 		"string":  reflect.String,
 		"bool":    reflect.Bool,
+		"byte":    reflect.Uint8,
+		"rune":    reflect.Int32,
 	}
 	for name, expected := range tests {
 		got := kindFromName(name)

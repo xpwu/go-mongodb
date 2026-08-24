@@ -46,6 +46,8 @@ func TestKindFromName(t *testing.T) {
 		{"float32", reflect.Float32}, {"float64", reflect.Float64},
 		{"string", reflect.String}, {"bool", reflect.Bool},
 		{"any", reflect.Interface}, {"interface{}", reflect.Interface},
+		{"byte", reflect.Uint8},
+		{"rune", reflect.Int32},
 		{"SomeStruct", reflect.Struct}, // 未知 → Struct
 	}
 	for _, tt := range tests {
@@ -616,5 +618,45 @@ type A struct { X int }`)
 	registerFileToLoader(loader, "p", file, filepath.Join(dir, "a.go"))
 	if len(pkg.files) != 1 {
 		t.Errorf("duplicate register: files=%d, want 1", len(pkg.files))
+	}
+}
+
+// ─── byte / rune 内置别名 ────────────────────────────────────
+
+func TestKindFromName_ByteAndRune(t *testing.T) {
+	if got := kindFromName("byte"); got != reflect.Uint8 {
+		t.Errorf("kindFromName(\"byte\") = %v, want Uint8", got)
+	}
+	if got := kindFromName("rune"); got != reflect.Int32 {
+		t.Errorf("kindFromName(\"rune\") = %v, want Int32", got)
+	}
+}
+
+func TestParseAstType_Byte(t *testing.T) {
+	r := parseAstTypeWithLoader(&ast.Ident{Name: "byte"}, map[string]string{}, "mypkg", GetLoader())
+	if r.Name() != "byte" || r.PkgPath() != "" || r.Kind() != reflect.Uint8 || !r.IsBuiltin() {
+		t.Errorf("byte: name=%q pkg=%q kind=%v builtin=%v, want byte/empty/Uint8/true",
+			r.Name(), r.PkgPath(), r.Kind(), r.IsBuiltin())
+	}
+}
+
+func TestParseAstType_Rune(t *testing.T) {
+	r := parseAstTypeWithLoader(&ast.Ident{Name: "rune"}, map[string]string{}, "mypkg", GetLoader())
+	if r.Name() != "rune" || r.PkgPath() != "" || r.Kind() != reflect.Int32 || !r.IsBuiltin() {
+		t.Errorf("rune: name=%q pkg=%q kind=%v builtin=%v, want rune/empty/Int32/true",
+			r.Name(), r.PkgPath(), r.Kind(), r.IsBuiltin())
+	}
+}
+
+func TestParseAstField_ByteField(t *testing.T) {
+	f := &ast.Field{
+		Names: []*ast.Ident{{Name: "Data"}},
+		Type:  &ast.Ident{Name: "byte"},
+		Tag:   &ast.BasicLit{Kind: token.STRING, Value: "`bson:\"data\"`"},
+	}
+	fs := parseAstFieldWithLoader(f, map[string]string{}, "mypkg", GetLoader())
+	if fs.Type() == nil || fs.Type().Kind() != reflect.Uint8 || !fs.Type().IsBuiltin() {
+		t.Errorf("byte field: kind=%v builtin=%v, want Uint8/true",
+			fs.Type().Kind(), fs.Type().IsBuiltin())
 	}
 }

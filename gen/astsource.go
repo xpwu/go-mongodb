@@ -763,6 +763,10 @@ func kindFromName(name string) reflect.Kind {
 		return reflect.Bool
 	case "any", "interface{}":
 		return reflect.Interface
+	case "byte":
+		return reflect.Uint8
+	case "rune":
+		return reflect.Int32
 	default:
 		return reflect.Struct
 	}

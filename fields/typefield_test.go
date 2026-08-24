@@ -20,6 +20,49 @@ func TestNewIntegerField(t *testing.T) {
 	}
 }
 
+func TestNewRuneField(t *testing.T) {
+	f := NewRuneField("char")
+	if f == nil {
+		t.Fatal("NewRuneField: returned nil")
+	}
+	if f.FullName() != "char" {
+		t.Errorf("FullName: got %v, want %v", f.FullName(), "char")
+	}
+}
+
+func TestRuneField_Inc(t *testing.T) {
+	f := NewRuneField("char")
+	u := f.Inc(1)
+	got := u.ToBsonM()
+
+	want := bson.M{"$inc": bson.M{"char": int32(1)}}
+	if !bsonMEqual(got, want) {
+		t.Errorf("RuneField Inc: got %v, want %v", got, want)
+	}
+}
+
+func TestRuneField_Mod(t *testing.T) {
+	f := NewRuneField("char")
+	flt := f.Mod(2, 0)
+	got := flt.ToBsonD()
+
+	want := bson.D{{"char", bson.D{{"$mod", bson.A{rune(2), rune(0)}}}}}
+	if !bsonDEqual(got, want) {
+		t.Errorf("RuneField Mod: got %v, want %v", got, want)
+	}
+}
+
+func TestRuneField_Set(t *testing.T) {
+	f := NewRuneField("char")
+	u := f.Set('A')
+	got := u.ToBsonM()
+
+	want := bson.M{"$set": bson.M{"char": rune('A')}}
+	if !bsonMEqual(got, want) {
+		t.Errorf("RuneField Set: got %v, want %v", got, want)
+	}
+}
+
 func TestIntegerField_Mod(t *testing.T) {
 	f := NewIntegerField[int]("count")
 	flt := f.Mod(5, 0)
@@ -192,6 +235,49 @@ func TestNewUnIntegerField(t *testing.T) {
 	}
 	if f.FullName() != "count" {
 		t.Errorf("FullName: got %v, want %v", f.FullName(), "count")
+	}
+}
+
+func TestNewByteField(t *testing.T) {
+	f := NewByteField("data")
+	if f == nil {
+		t.Fatal("NewByteField: returned nil")
+	}
+	if f.FullName() != "data" {
+		t.Errorf("FullName: got %v, want %v", f.FullName(), "data")
+	}
+}
+
+func TestByteField_Inc(t *testing.T) {
+	f := NewByteField("data")
+	u := f.Inc(5)
+	got := u.ToBsonM()
+
+	want := bson.M{"$inc": bson.M{"data": int8(5)}}
+	if !bsonMEqual(got, want) {
+		t.Errorf("ByteField Inc: got %v, want %v", got, want)
+	}
+}
+
+func TestByteField_Mod(t *testing.T) {
+	f := NewByteField("data")
+	flt := f.Mod(4, 1)
+	got := flt.ToBsonD()
+
+	want := bson.D{{"data", bson.D{{"$mod", bson.A{byte(4), byte(1)}}}}}
+	if !bsonDEqual(got, want) {
+		t.Errorf("ByteField Mod: got %v, want %v", got, want)
+	}
+}
+
+func TestByteField_Set(t *testing.T) {
+	f := NewByteField("data")
+	u := f.Set(255)
+	got := u.ToBsonM()
+
+	want := bson.M{"$set": bson.M{"data": byte(255)}}
+	if !bsonMEqual(got, want) {
+		t.Errorf("ByteField Set: got %v, want %v", got, want)
 	}
 }
 
@@ -539,6 +625,7 @@ func TestTypeAliases_Int(t *testing.T) {
 	var _ IntegerField[int16] = NewInt16Field("x")
 	var _ IntegerField[int32] = NewInt32Field("x")
 	var _ IntegerField[int64] = NewInt64Field("x")
+	var _ IntegerField[rune] = NewRuneField("x")
 }
 
 func TestTypeAliases_Uint(t *testing.T) {
@@ -572,6 +659,7 @@ func TestIntegerTypeConstraint_AllTypes(t *testing.T) {
 	_ = NewIntegerField[int8]("i8")
 	_ = NewIntegerField[int16]("i16")
 	_ = NewIntegerField[int32]("i32")
+	_ = NewIntegerField[rune]("r")
 	_ = NewIntegerField[int64]("i64")
 	_ = NewIntegerField[uint]("u")
 	_ = NewIntegerField[uint8]("u8")
@@ -583,6 +671,7 @@ func TestIntegerTypeConstraint_AllTypes(t *testing.T) {
 func TestUnIntegerTypeConstraint_AllTypes(t *testing.T) {
 	_ = NewUnIntegerField[uint, int]("u")
 	_ = NewUnIntegerField[uint8, int8]("u8")
+	_ = NewUnIntegerField[byte, int8]("b")
 	_ = NewUnIntegerField[uint16, int16]("u16")
 	_ = NewUnIntegerField[uint32, int32]("u32")
 	_ = NewUnIntegerField[uint64, int64]("u64")

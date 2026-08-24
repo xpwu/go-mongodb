@@ -38,6 +38,7 @@ type IntField = IntegerField[int]
 type Int8Field = IntegerField[int8]
 type Int16Field = IntegerField[int16]
 type Int32Field = IntegerField[int32]
+type RuneField = IntegerField[rune]
 type Int64Field = IntegerField[int64]
 
 var (
@@ -45,6 +46,7 @@ var (
 	NewInt8Field  = NewIntegerField[int8]
 	NewInt16Field = NewIntegerField[int16]
 	NewInt32Field = NewIntegerField[int32]
+	NewRuneField  = NewIntegerField[rune]
 	NewInt64Field = NewIntegerField[int64]
 )
 
