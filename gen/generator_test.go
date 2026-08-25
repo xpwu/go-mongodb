@@ -405,6 +405,23 @@ func TestLookupBuiltinDirect_GeoPoint(t *testing.T) {
 	}
 }
 
+func TestLookupBuiltinDirect_TimeTime(t *testing.T) {
+	c := NewConfig()
+	g := NewGenerator(c)
+	timePkg := "time"
+	ts := &astTypeSource{name: "Time", pkgPath: timePkg}
+	info, ok := g.lookupBuiltinDirect(ts)
+	if !ok {
+		t.Fatal("should find time.Time")
+	}
+	if !info.EqualAble {
+		t.Error("time.Time should be EqualAble")
+	}
+	if !strings.Contains(info.Field.Name(), "Time") {
+		t.Errorf("Field = %s, should contain Time", info.Field.Name())
+	}
+}
+
 // ─── buildKind 测试 ─────────────────────────────────────────
 
 func TestBuildKind_Int(t *testing.T) {
@@ -484,13 +501,42 @@ func TestBuildKind_Interface(t *testing.T) {
 }
 
 func TestBuildKind_Unsupported(t *testing.T) {
-	c := NewConfig()
-	g := NewGenerator(c)
-	ts := &astTypeSource{name: "Chan", pkgPath: "mypkg", kind: reflect.Chan}
-	realTs := &astTypeSource{name: "Chan", pkgPath: "mypkg", kind: reflect.Chan}
-	_, ok := g.buildKind(ts, realTs)
-	if ok {
-		t.Error("buildKind(chan) should fail")
+	tests := []struct {
+		name string
+		kind reflect.Kind
+	}{
+		{"complex64", reflect.Complex64},
+		{"complex128", reflect.Complex128},
+		{"chan", reflect.Chan},
+		{"func", reflect.Func},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r != nil {
+					if err, ok := r.(error); ok {
+						want := "complex64/complex128/chan/func are not supported by MongoDB/BSON"
+						if err.Error() != want {
+							t.Errorf("panic message = %q, want %q", err.Error(), want)
+						}
+					} else {
+						panic(r)
+					}
+				} else {
+					t.Error("expected panic, got none")
+				}
+			}()
+
+			c := NewConfig()
+			g := NewGenerator(c)
+			ts := &astTypeSource{name: tt.name, pkgPath: "mypkg", kind: tt.kind}
+			realTs := &astTypeSource{name: tt.name, pkgPath: "mypkg", kind: tt.kind}
+			_, ok := g.buildKind(ts, realTs)
+			if ok {
+				t.Error("buildKind should not return ok for unsupported kind")
+			}
+		})
 	}
 }
 
@@ -686,6 +732,57 @@ type Item struct {
 	info2, _ := g.buildStruct(ts)
 	if info1.Field.Name() != info2.Field.Name() {
 		t.Error("cached result should be consistent")
+	}
+}
+
+func TestBuildStruct_WithTimeField(t *testing.T) {
+	src := `
+package mypkg
+
+import "time"
+
+type Event struct {
+	CreatedAt time.Time ` + "`bson:\"created_at\"`" + `
+}
+`
+	loader := newTestLoader(t)
+	registerTestFile(t, loader, "event.go", src)
+
+	ts := parseAstTypeWithLoader(&ast.Ident{Name: "Event"}, nil, "mypkg", loader)
+	_, err := loader.LoadPackage("mypkg")
+	if err != nil {
+		t.Fatalf("LoadPackage: %v", err)
+	}
+	ts.EnsureFields()
+
+	dir := loader.goModDir
+	c := NewConfig()
+	c.Dir = dir
+	c.Pkg = "mypkg"
+	g := NewGenerator(c)
+	g.outputDir = dir
+	g.targetPkg = "mypkg"
+
+	info, ok := g.buildStruct(ts)
+	if !ok {
+		t.Fatal("buildStruct should succeed")
+	}
+	if !info.EqualAble {
+		t.Error("Event should be EqualAble (time.Time is EqualAble)")
+	}
+
+	// 验证生成的文件内容包含 TimeField
+	expectedFile := filepath.Join(dir, "zEventField.go")
+	content, err := os.ReadFile(expectedFile)
+	if err != nil {
+		t.Fatalf("read generated file: %v", err)
+	}
+	contentStr := string(content)
+	if !strings.Contains(contentStr, "TimeField") {
+		t.Error("generated file should contain TimeField")
+	}
+	if !strings.Contains(contentStr, "NewTimeField") {
+		t.Error("generated file should contain NewTimeField")
 	}
 }
 

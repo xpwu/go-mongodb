@@ -316,6 +316,19 @@ func (g *Generator) lookupBuiltinDirect(ts TypeSource) (TypeInfo, bool) {
 		}
 	}
 
+	// time 包类型
+	timePkg := "time"
+	if ts.PkgPath() == timePkg {
+		if ts.Name() == "Time" {
+			return TypeInfo{
+				T:         ts,
+				Field:     typeRef{name: "TimeField", pkg: fieldsPkg},
+				NewField:  typeRef{name: "NewTimeField", pkg: fieldsPkg},
+				EqualAble: true,
+			}, true
+		}
+	}
+
 	return TypeInfo{}, false
 }
 
@@ -346,6 +359,8 @@ func (g *Generator) buildKind(ts, realTs TypeSource) (TypeInfo, bool) {
 			NewField:  typeRef{name: fmt.Sprintf("NewBaseStructField[%s]", typeName), pkg: fieldsPkg},
 			EqualAble: false,
 		}, true
+	case reflect.Complex64, reflect.Complex128, reflect.Chan, reflect.Func:
+		panic(fmt.Errorf("complex64/complex128/chan/func are not supported by MongoDB/BSON"))
 	default:
 		return TypeInfo{}, false
 	}
