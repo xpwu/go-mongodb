@@ -7,6 +7,7 @@ import (
 	"github.com/xpwu/go-mongodb/index"
 	"github.com/xpwu/go-mongodb/updater"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"time"
 )
 
 type Integer interface {
@@ -177,4 +178,14 @@ type ComparableStructField[T any] interface {
 
 func NewBaseStructField[T any](name string) BaseStructField[T] {
 	return &BaseField[T]{name}
+}
+
+type TimeField interface {
+	field.Field
+	filter.ComparableFilter[time.Time]
+	updater.BaseUpdater[time.Time]
+}
+
+func NewTimeField(name string) TimeField {
+	return &BaseField[time.Time]{name}
 }

@@ -2,6 +2,7 @@ package fields
 
 import (
 	"testing"
+	"time"
 
 	"github.com/xpwu/go-mongodb/filter"
 	"github.com/xpwu/go-mongodb/updater"
@@ -649,6 +650,90 @@ func TestTypeAliases_Bool(t *testing.T) {
 func TestTypeAliases_Float(t *testing.T) {
 	var _ ComputableField[float32] = NewFloat32Field("x")
 	var _ ComputableField[float64] = NewFloat64Field("x")
+}
+
+// ==================== TimeField 测试 ====================
+
+func TestNewTimeField(t *testing.T) {
+	f := NewTimeField("createdAt")
+	if f == nil {
+		t.Fatal("NewTimeField: returned nil")
+	}
+	if f.FullName() != "createdAt" {
+		t.Errorf("FullName: got %v, want %v", f.FullName(), "createdAt")
+	}
+}
+
+func TestTimeField_Set(t *testing.T) {
+	f := NewTimeField("createdAt")
+	val := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	u := f.Set(val)
+	got := u.ToBsonM()
+
+	want := bson.M{"$set": bson.M{"createdAt": val}}
+	if !bsonMEqual(got, want) {
+		t.Errorf("TimeField Set: got %v, want %v", got, want)
+	}
+}
+
+func TestTimeField_Gt(t *testing.T) {
+	f := NewTimeField("createdAt")
+	val := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	flt := f.Gt(val)
+	got := flt.ToBsonD()
+
+	want := bson.D{{"createdAt", bson.D{{"$gt", val}}}}
+	if !bsonDEqual(got, want) {
+		t.Errorf("TimeField Gt: got %v, want %v", got, want)
+	}
+}
+
+func TestTimeField_Gte(t *testing.T) {
+	f := NewTimeField("createdAt")
+	val := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	flt := f.Gte(val)
+	got := flt.ToBsonD()
+
+	want := bson.D{{"createdAt", bson.D{{"$gte", val}}}}
+	if !bsonDEqual(got, want) {
+		t.Errorf("TimeField Gte: got %v, want %v", got, want)
+	}
+}
+
+func TestTimeField_Lt(t *testing.T) {
+	f := NewTimeField("createdAt")
+	val := time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC)
+	flt := f.Lt(val)
+	got := flt.ToBsonD()
+
+	want := bson.D{{"createdAt", bson.D{{"$lt", val}}}}
+	if !bsonDEqual(got, want) {
+		t.Errorf("TimeField Lt: got %v, want %v", got, want)
+	}
+}
+
+func TestTimeField_Lte(t *testing.T) {
+	f := NewTimeField("createdAt")
+	val := time.Date(2024, 12, 31, 23, 59, 59, 0, time.UTC)
+	flt := f.Lte(val)
+	got := flt.ToBsonD()
+
+	want := bson.D{{"createdAt", bson.D{{"$lte", val}}}}
+	if !bsonDEqual(got, want) {
+		t.Errorf("TimeField Lte: got %v, want %v", got, want)
+	}
+}
+
+func TestTimeField_Eq(t *testing.T) {
+	f := NewTimeField("createdAt")
+	val := time.Date(2024, 6, 15, 12, 0, 0, 0, time.UTC)
+	flt := f.Eq(val)
+	got := flt.ToBsonD()
+
+	want := bson.D{{"createdAt", val}}
+	if !bsonDEqual(got, want) {
+		t.Errorf("TimeField Eq: got %v, want %v", got, want)
+	}
 }
 
 // ==================== Integer 类型约束测试 ====================
