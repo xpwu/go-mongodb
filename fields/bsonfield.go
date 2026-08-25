@@ -77,7 +77,7 @@ func NewRawElementField(name string) RawElementField {
 type DateTimeField interface {
 	field.Field
 	filter.ComparableFilter[bson.DateTime]
-	updater.BaseUpdater[bson.DateTime]
+	updater.ComputableUpdater[bson.DateTime, bson.DateTime]
 }
 
 func NewDateTimeField(name string) DateTimeField {
