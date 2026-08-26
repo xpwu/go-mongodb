@@ -110,19 +110,6 @@ func (l *TypeLoader) LoadPackage(pkgPath string) (*loadedPackage, error) {
 
 func (l *TypeLoader) parsePackageDir(dir string) (*loadedPackage, error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, func(info os.FileInfo) bool {
-		name := info.Name()
-		if strings.HasSuffix(name, "_test.go") {
-			return false
-		}
-		if strings.HasPrefix(name, "z") && strings.HasSuffix(name, "Field.go") {
-			return false
-		}
-		return true
-	}, 0)
-	if err != nil {
-		return nil, err
-	}
 
 	pkg := &loadedPackage{
 		fset:             fset,
@@ -135,18 +122,46 @@ func (l *TypeLoader) parsePackageDir(dir string) (*loadedPackage, error) {
 		interfaceTargets: make(map[string]bool),
 		underlyingCache:  make(map[string]*astTypeSource),
 	}
-	for _, p := range pkgs {
-		for _, file := range p.Files {
-			pkg.files = append(pkg.files, file)
-		}
+
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
 	}
+
+	for _, entry := range files {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if strings.HasPrefix(name, "z") && strings.HasSuffix(name, "Field.go") {
+			continue
+		}
+
+		filePath := filepath.Join(dir, name)
+		file, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+		if err != nil && file == nil {
+			continue
+		}
+		if file == nil {
+			continue
+		}
+		// 静默加入：parse error 已经在 scan 阶段报过了，这里不再重复
+		pkg.files = append(pkg.files, file)
+	}
+
 	if len(pkg.files) == 0 {
 		return nil, fmt.Errorf("no Go files found in %s", dir)
 	}
 	return pkg, nil
 }
 
-// ─── 三方库路径解析（不动）──────────────────────────────────
+// ─── 三方库路径解析──────────────────────────────────
 
 func (l *TypeLoader) resolvePkgDir(pkgPath string) string {
 	// 1. 当前 module 下的包
@@ -383,35 +398,70 @@ func ScanDir(dir string) (*ScanResult, error) {
 
 func scanDirAll(dir string) (*ScanResult, error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, func(info os.FileInfo) bool {
-		name := info.Name()
-		if strings.HasSuffix(name, "_test.go") {
-			return false
-		}
-		if strings.HasPrefix(name, "z") && strings.HasSuffix(name, "Field.go") {
-			return false
-		}
-		return true
-	}, parser.ParseComments)
+	result := &ScanResult{}
+
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	result := &ScanResult{}
-	for _, pkg := range pkgs {
-		for fileName, file := range pkg.Files {
-			r := scanFileAST(fileName, file, fset)
-			result.Structs = append(result.Structs, r.Structs...)
+
+	for _, entry := range files {
+		if entry.IsDir() {
+			continue
 		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if strings.HasPrefix(name, "z") && strings.HasSuffix(name, "Field.go") {
+			continue
+		}
+
+		filePath := filepath.Join(dir, name)
+		file, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+		if err != nil && file == nil {
+			continue
+		}
+		if file == nil {
+			continue
+		}
+		if err != nil {
+			printParseWarning(err)
+		}
+
+		r := scanFileAST(filePath, file, fset)
+		result.Structs = append(result.Structs, r.Structs...)
+	}
+
+	if len(result.Structs) == 0 {
+		return nil, fmt.Errorf("no structs with //go:generate found in %s", dir)
 	}
 	return result, nil
+}
+
+func printParseWarning(err error) {
+	fmt.Fprintf(os.Stderr, "parse error: %v\n", err)
+	fmt.Fprintf(os.Stderr, "warning: declarations after the first syntax error are not scanned\n")
 }
 
 func scanFile(filePath string) (*ScanResult, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
-	if err != nil {
+	if err != nil && file == nil {
 		return nil, err
 	}
+	if file == nil {
+		return nil, fmt.Errorf("cannot parse %s", filePath)
+	}
+
+	if err != nil {
+		printParseWarning(err)
+	}
+
+	// file 非 nil，即使有 err 也继续扫描
 	return scanFileAST(filePath, file, fset), nil
 }
 
@@ -515,10 +565,14 @@ func ParseStructFromFile(dir, structName string) (TypeSource, error) {
 func parseStructFromFile(filePath, structName string, loader *TypeLoader) (TypeSource, error) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
-	if err != nil {
+	if err != nil && file == nil {
 		return nil, err
 	}
+	if file == nil {
+		return nil, fmt.Errorf("cannot parse %s", filePath)
+	}
 
+	// file 非 nil，继续正常流程
 	importMap := make(map[string]string)
 	collectImports(file, importMap)
 	pkgPath := resolvePkgPath(filepath.Dir(filePath))
@@ -529,34 +583,44 @@ func parseStructFromFile(filePath, structName string, loader *TypeLoader) (TypeS
 
 func parseStructFromDir(dir, structName string, loader *TypeLoader) (TypeSource, error) {
 	fset := token.NewFileSet()
-	pkgs, err := parser.ParseDir(fset, dir, func(info os.FileInfo) bool {
-		name := info.Name()
-		if strings.HasSuffix(name, "_test.go") {
-			return false
-		}
-		if strings.HasPrefix(name, "z") && strings.HasSuffix(name, "Field.go") {
-			return false
-		}
-		return true
-	}, 0)
+	pkgPath := resolvePkgPath(dir)
+	importMap := make(map[string]string)
+
+	files, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
 
-	pkgPath := resolvePkgPath(dir)
-	importMap := make(map[string]string)
+	for _, entry := range files {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".go") {
+			continue
+		}
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if strings.HasPrefix(name, "z") && strings.HasSuffix(name, "Field.go") {
+			continue
+		}
 
-	for _, pkg := range pkgs {
-		for fileName, file := range pkg.Files {
-			if strings.HasSuffix(fileName, "_test.go") {
-				continue
-			}
-			collectImports(file, importMap)
-			registerFileToLoader(loader, pkgPath, file, fileName)
+		filePath := filepath.Join(dir, name)
+		file, err := parser.ParseFile(fset, filePath, nil, parser.ParseComments)
+		if err != nil && file == nil {
+			continue
+		}
+		if file == nil {
+			continue
+		}
 
-			if ts, err := findStructInFile(file, structName, importMap, pkgPath, loader); ts != nil || err != nil {
-				return ts, err
-			}
+		// 静默继续：parse error 已经在 scan 阶段报过了
+		collectImports(file, importMap)
+		registerFileToLoader(loader, pkgPath, file, filePath)
+
+		if ts, err := findStructInFile(file, structName, importMap, pkgPath, loader); ts != nil || err != nil {
+			return ts, err
 		}
 	}
 	return nil, nil
