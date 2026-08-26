@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 )
 
@@ -469,15 +470,22 @@ func scanFileAST(filePath string, file *ast.File, fset *token.FileSet) *ScanResu
 	result := &ScanResult{}
 	cmap := ast.NewCommentMap(fset, file, file.Comments)
 
+	targetLine := 0
+	if lineStr := os.Getenv("GOLINE"); lineStr != "" {
+		targetLine, _ = strconv.Atoi(lineStr)
+	}
+
 	for _, decl := range file.Decls {
 		comments := cmap.Filter(decl).Comments()
 		if len(comments) == 0 {
 			continue
 		}
 		var hasGenerate bool
+		var generateLine int
 		for _, cg := range comments {
 			for _, comment := range cg.List {
 				if strings.Contains(comment.Text, "//go:generate") {
+					generateLine = fset.Position(cg.Pos()).Line
 					hasGenerate = true
 					break
 				}
@@ -487,6 +495,9 @@ func scanFileAST(filePath string, file *ast.File, fset *token.FileSet) *ScanResu
 			}
 		}
 		if !hasGenerate {
+			continue
+		}
+		if targetLine > 0 && generateLine != targetLine {
 			continue
 		}
 
