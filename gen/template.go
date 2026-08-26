@@ -58,7 +58,6 @@ func NewLike{{.Name}}Field[T any](name string) Like{{.Name}}Field[T] {
 	}
 }
 
-var {{.Name}}Doc = New{{.Name}}Field("")
 var New{{.Name}}Field = NewLike{{.Name}}Field[{{.TypePkg}}{{.Name}}]
 
 func NewLike{{.Name}}FieldSubFields(name string) Like{{.Name}}FieldSubFields {
@@ -71,6 +70,11 @@ func NewLike{{.Name}}FieldSubFields(name string) Like{{.Name}}FieldSubFields {
 }
 
 var New{{.Name}}FieldSubFields = NewLike{{.Name}}FieldSubFields
+
+var {{.Name}}Coll = struct{
+	DefaultName string
+	Like{{.Name}}FieldSubFields
+}{ "{{.Name}}", New{{.Name}}FieldSubFields("")}
 
 {{- range .Fields}}
 
