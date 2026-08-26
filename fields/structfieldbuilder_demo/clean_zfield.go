@@ -1,5 +1,3 @@
-//go:generate go run clean_zfield.go
-
 package main
 
 import (
