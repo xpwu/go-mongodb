@@ -235,7 +235,12 @@ func (b *BuildConfig) Run() {
 			if !filepath.IsAbs(goFile) {
 				absGoFile = filepath.Join(srcDir, goFile)
 			}
-			fmt.Printf("no struct found after //go:generate in %s\n", absGoFile)
+
+			if lineStr := os.Getenv("GOLINE"); lineStr != "" {
+				fmt.Printf("no struct found after //go:generate at %s:%s\n", absGoFile, lineStr)
+			} else {
+				fmt.Printf("no struct found after //go:generate in %s\n", absGoFile)
+			}
 		} else {
 			fmt.Printf("no struct found after //go:generate in %s\n", srcDir)
 		}
