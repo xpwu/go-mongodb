@@ -59,7 +59,6 @@ func NewLikeUserInfoField[T any](name string) LikeUserInfoField[T] {
 	}
 }
 
-var UserInfoDoc = NewUserInfoField("")
 var NewUserInfoField = NewLikeUserInfoField[UserInfo]
 
 func NewLikeUserInfoFieldSubFields(name string) LikeUserInfoFieldSubFields {
@@ -70,6 +69,11 @@ func NewLikeUserInfoFieldSubFields(name string) LikeUserInfoFieldSubFields {
 }
 
 var NewUserInfoFieldSubFields = NewLikeUserInfoFieldSubFields
+
+var UserInfoColl = struct{
+	DefaultName string
+	LikeUserInfoFieldSubFields
+}{ "UserInfo", NewUserInfoFieldSubFields("")}
 
 func (s *likeUserInfoField[T]) StringIDF() fields.StringField {
 	return fields.NewStringField(fields.SubField(s.FullName(), "_id"))

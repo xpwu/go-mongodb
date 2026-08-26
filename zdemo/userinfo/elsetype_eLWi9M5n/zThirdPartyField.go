@@ -36,7 +36,6 @@ func NewLikeThirdPartyField[T any](name string) LikeThirdPartyField[T] {
 	}
 }
 
-var ThirdPartyDoc = NewThirdPartyField("")
 var NewThirdPartyField = NewLikeThirdPartyField[elsetype.ThirdParty]
 
 func NewLikeThirdPartyFieldSubFields(name string) LikeThirdPartyFieldSubFields {
@@ -46,6 +45,11 @@ func NewLikeThirdPartyFieldSubFields(name string) LikeThirdPartyFieldSubFields {
 }
 
 var NewThirdPartyFieldSubFields = NewLikeThirdPartyFieldSubFields
+
+var ThirdPartyColl = struct{
+	DefaultName string
+	LikeThirdPartyFieldSubFields
+}{ "ThirdParty", NewThirdPartyFieldSubFields("")}
 
 func (s *likeThirdPartyField[T]) Float64F() fields.Float64Field {
 	return fields.NewFloat64Field(fields.SubField(s.FullName(), "float64"))

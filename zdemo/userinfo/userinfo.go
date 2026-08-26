@@ -62,4 +62,11 @@ type UserInfo struct {
 	Runes                  []rune
 }
 
-var filter2 = UserInfoDoc.AliasWxF().LikeStringName_elsetype_FullNameF().Eq("")
+var collName = UserInfoColl.DefaultName
+var fil = UserInfoColl.AliasWxF().IntPtrF().Eq(5)
+
+//go:generate go run github.com/xpwu/go-mongodb/cmd/gomongodbgen
+
+type OrgInfo struct {
+	Admin UserInfo
+}

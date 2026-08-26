@@ -38,7 +38,6 @@ func NewLikeOrderField[T any](name string) LikeOrderField[T] {
 	}
 }
 
-var OrderDoc = NewOrderField("")
 var NewOrderField = NewLikeOrderField[Order]
 
 func NewLikeOrderFieldSubFields(name string) LikeOrderFieldSubFields {
@@ -48,6 +47,11 @@ func NewLikeOrderFieldSubFields(name string) LikeOrderFieldSubFields {
 }
 
 var NewOrderFieldSubFields = NewLikeOrderFieldSubFields
+
+var OrderColl = struct{
+	DefaultName string
+	LikeOrderFieldSubFields
+}{ "Order", NewOrderFieldSubFields("")}
 
 func (s *likeOrderField[T]) Uint64F() fields.Uint64Field {
 	return fields.NewUint64Field(fields.SubField(s.FullName(), "uint64"))

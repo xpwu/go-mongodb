@@ -36,7 +36,6 @@ func NewLikeEField[T any](name string) LikeEField[T] {
 	}
 }
 
-var EDoc = NewEField("")
 var NewEField = NewLikeEField[bson.E]
 
 func NewLikeEFieldSubFields(name string) LikeEFieldSubFields {
@@ -46,6 +45,11 @@ func NewLikeEFieldSubFields(name string) LikeEFieldSubFields {
 }
 
 var NewEFieldSubFields = NewLikeEFieldSubFields
+
+var EColl = struct{
+	DefaultName string
+	LikeEFieldSubFields
+}{ "E", NewEFieldSubFields("")}
 
 func (s *likeEField[T]) KeyF() fields.StringField {
 	return fields.NewStringField(fields.SubField(s.FullName(), "key"))

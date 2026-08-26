@@ -43,7 +43,6 @@ func NewLikeWxField[T any](name string) LikeWxField[T] {
 	}
 }
 
-var WxDoc = NewWxField("")
 var NewWxField = NewLikeWxField[Wx]
 
 func NewLikeWxFieldSubFields(name string) LikeWxFieldSubFields {
@@ -53,6 +52,11 @@ func NewLikeWxFieldSubFields(name string) LikeWxFieldSubFields {
 }
 
 var NewWxFieldSubFields = NewLikeWxFieldSubFields
+
+var WxColl = struct{
+	DefaultName string
+	LikeWxFieldSubFields
+}{ "Wx", NewWxFieldSubFields("")}
 
 func (s *likeWxField[T]) Decimal128F() fields.Decimal128Field {
 	return fields.NewDecimal128Field(fields.SubField(s.FullName(), "decimal128"))
