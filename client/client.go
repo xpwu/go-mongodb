@@ -383,6 +383,11 @@ func GetFromCache(cacheId CacheId, opts ...xopt.Option) (client *mongo.Client, e
 
 	nc, err := NewClient(&cacheId.Config, opts...)
 	if err != nil {
+		// 防止半初始化
+		if client != nil {
+			_ = nc.Disconnect(context.Background())
+			client = nil
+		}
 		return
 	}
 
