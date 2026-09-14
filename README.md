@@ -358,9 +358,11 @@ opt := xopt.WithPreserveField() // ← 必须与生成阶段一致
 cli := client.MustGet(cfg.CacheId().WithSuffix("user-service"), opt)
 ```
 
-#### WithPreserveField 的 bson tag 说明
+#### WithPreserveField 说明
 
-使用 `WithPreserveField` 时，原始 bson tag 会被完整保留并透传到生成的代码中。三个属性 `omitempty`、`minsize`、`truncate` **在当前字段上生效，但不会传递到嵌套 struct 字段**（这是 MongoDB Go Driver v2 的限制，无法改变）。
+使用 `WithPreserveField` 时，在没有设置 bson tag 时，字段名保持 struct 书写的原始名称，"所写即所得"，不会像 Driver v2 转换为全小写。 
+如果设置了 bson tag， 仍会以设置的 bson tag 为准，但有以下限制：
+三个属性 `omitempty`、`minsize`、`truncate` **仅在当前字段上生效，不会传递到嵌套 struct 字段**（这是 MongoDB Go Driver v2 代码的限制，无法改变）。
 
 **支持的 tag 写法：**
 - `omitempty` — ✅ 本级生效，零值字段在编解码时被省略
